@@ -1,0 +1,133 @@
+version: 2
+
+models:
+  - name: bronze_stations
+    description: "Bronze layer: Raw station master data from Digitraffic API"
+    columns:
+      - name: stationShortCode
+        description: "Primary key: 3-letter station code (e.g., HKI, TPE)"
+        tests:
+          - not_null
+          - unique
+
+      - name: stationName
+        description: "Full station name"
+        tests:
+          - not_null
+
+      - name: stationUICCode
+        description: "International UIC station code"
+        tests:
+          - not_null
+          - unique
+
+      - name: latitude
+        description: "WGS84 latitude coordinate"
+        tests:
+          - not_null
+
+      - name: longitude
+        description: "WGS84 longitude coordinate"
+        tests:
+          - not_null
+
+      - name: passengerTraffic
+        description: "Boolean indicating if station serves passengers"
+        tests:
+          - not_null
+
+      - name: type
+        description: "Station type classification"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['STATION', 'STOPPING_POINT', 'TURNOUT_IN_THE_OPEN_LINE']
+
+      - name: countryCode
+        description: "ISO country code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['FI']
+
+      - name: _loaded_at
+        description: "Timestamp when record was loaded into bronze layer"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Source JSON file path for data lineage"
+        tests:
+          - not_null
+
+      - name: _dbt_run_id
+        description: "dbt invocation ID for this load"
+        tests:
+          - not_null
+
+  - name: bronze_train_departures
+    description: |
+      Bronze layer: Raw train departure data with nested timetable information.
+      Each record represents one train's journey on a specific date, including
+      all station stops in the timeTableRows nested array.
+
+      Loaded incrementally based on departureDate to handle growing dataset efficiently.
+
+      NOTE: timeTableRows is kept as nested STRUCT array - flattening deferred to silver layer.
+
+    columns:
+      - name: trainNumber
+        description: "Train number (not unique across dates)"
+        tests:
+          - not_null
+
+      - name: departureDate
+        description: "Date of train departure (YYYY-MM-DD format)"
+        tests:
+          - not_null
+
+      - name: operatorShortCode
+        description: "Operating company short code (e.g., vr)"
+        tests:
+          - not_null
+
+      - name: trainType
+        description: "Train type code (IC, S, HDM, P, etc.)"
+        tests:
+          - not_null
+
+      - name: trainCategory
+        description: "Train category classification"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Long-distance', 'Commuter', 'Cargo', 'Locomotive', 'On-track machines']
+
+      - name: cancelled
+        description: "Boolean indicating if train was cancelled"
+        tests:
+          - not_null
+
+      - name: timeTableRows
+        description: "Nested STRUCT array containing all station stops with timing data"
+
+      - name: _loaded_at
+        description: "Timestamp when record was loaded"
+        tests:
+          - not_null
+
+      - name: _source_file
+        description: "Source JSON file path for data lineage"
+        tests:
+          - not_null
+
+      - name: _dbt_run_id
+        description: "dbt invocation ID for this load"
+        tests:
+          - not_null
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - trainNumber
+            - departureDate

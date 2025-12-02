@@ -1,0 +1,7 @@
+dbt_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: '../data/warehouse/warehouse.duckdb'
+      schema: main
