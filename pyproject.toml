@@ -11,6 +11,9 @@ dependencies = [
     "ipykernel>=7.1.0",
     "jupyterlab>=4.5.0",
     "requests>=2.32.5",
+    "dbt-core>=1.7.0,<2.0.0",
+    "dbt-duckdb>=1.7.0,<2.0.0",
+    "duckdb>=0.10.0",
 ]
 
 [build-system]

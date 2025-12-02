@@ -21,6 +21,8 @@ data/staging/*
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
 
+notebooks/*
+.ipynb
 
 # IPython
 profile_default/
