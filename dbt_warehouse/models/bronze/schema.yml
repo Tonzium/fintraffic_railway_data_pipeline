@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: bronze_stations
-    description: "Bronze layer: Raw station master data from Digitraffic API"
+    description: '{{ doc("bronze_stations_desc") }}'
     columns:
       - name: stationShortCode
         description: "Primary key: 3-letter station code (e.g., HKI, TPE)"
@@ -66,14 +66,7 @@ models:
           - not_null
 
   - name: bronze_train_departures
-    description: |
-      Bronze layer: Raw train departure data with nested timetable information.
-      Each record represents one train's journey on a specific date, including
-      all station stops in the timeTableRows nested array.
-
-      Loaded incrementally based on departureDate to handle growing dataset efficiently.
-
-      NOTE: timeTableRows is kept as nested STRUCT array - flattening deferred to silver layer.
+    description: '{{ doc("bronze_train_deps") }}'
 
     columns:
       - name: trainNumber
