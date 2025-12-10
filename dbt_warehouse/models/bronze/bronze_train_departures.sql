@@ -9,8 +9,37 @@
     unique_key=['trainNumber', 'departureDate']
 ) }}
 
-WITH source_data AS (
+WITH trains_raw AS (
+    SELECT *
+    FROM read_json(
+        '{{ var("staging_path") }}/train_departure_date/**/*.json',
+        format='array',
+        filename=true,
+        union_by_name=true,
+        ignore_errors=false,
+        maximum_object_size=52428800,  -- 50MB per object
+        columns={
+            'trainNumber': 'INTEGER',
+            'departureDate': 'DATE',
+            'operatorUICCode': 'INTEGER',
+            'operatorShortCode': 'VARCHAR',
+            'trainType': 'VARCHAR',
+            'trainCategory': 'VARCHAR',
+            'commuterLineID': 'VARCHAR',
+            'runningCurrently': 'BOOLEAN',
+            'cancelled': 'BOOLEAN',
+            'version': 'BIGINT',
+            'timetableType': 'VARCHAR',
+            'timetableAcceptanceDate': 'TIMESTAMP',
+            'timeTableRows': 'JSON'  -- Keep nested as JSON
+        }
+    )
+),
+
+surrogate_key_added AS (
     SELECT
+        {{ dbt_utils.generate_surrogate_key(['trainNumber', 'departureDate']) }} as sk_train_departure,
+
         -- Train identification
         trainNumber,
         departureDate,
@@ -33,7 +62,7 @@ WITH source_data AS (
         timetableType,
         timetableAcceptanceDate,
 
-        -- KEEP NESTED: timeTableRows as STRUCT[]
+        -- KEEP NESTED: timeTableRows as JSON
         -- Contains: stationShortCode, type, scheduledTime, actualTime,
         -- differenceInMinutes, commercialTrack, trainReady, etc.
         timeTableRows,
@@ -43,14 +72,7 @@ WITH source_data AS (
         regexp_extract(filename, 'train_departure_date/.*\.json') AS _source_file,
         '{{ invocation_id }}' AS _dbt_run_id
 
-    FROM read_json_auto(
-        '{{ var("staging_path") }}/train_departure_date/**/*.json',
-        format='array',
-        filename=true,
-        union_by_name=true,
-        ignore_errors=false,
-        maximum_object_size=52428800  -- 50MB per object
-    )
+    FROM trains_raw
 
     {% if is_incremental() %}
     -- Only load files not yet processed
@@ -60,4 +82,4 @@ WITH source_data AS (
     {% endif %}
 )
 
-SELECT * FROM source_data
+SELECT * FROM surrogate_key_added

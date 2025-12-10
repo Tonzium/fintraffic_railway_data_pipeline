@@ -7,8 +7,28 @@
     materialized='table'
 ) }}
 
-WITH source_data AS (
+WITH stations_raw AS (
+    SELECT *
+    FROM read_json(
+        '{{ var("staging_path") }}/stations/stations.json',
+        format='array',
+        columns={
+            'stationShortCode': 'VARCHAR',
+            'stationName': 'VARCHAR',
+            'stationUICCode': 'INTEGER',
+            'latitude': 'DOUBLE',
+            'longitude': 'DOUBLE',
+            'passengerTraffic': 'BOOLEAN',
+            'type': 'VARCHAR',
+            'countryCode': 'VARCHAR'
+        }
+    )
+),
+
+surrogate_key_added AS (
     SELECT
+        {{ dbt_utils.generate_surrogate_key(['stationShortCode']) }} as sk_station,
+
         -- Source columns
         stationShortCode,
         stationName,
@@ -24,11 +44,7 @@ WITH source_data AS (
         'stations/stations.json' AS _source_file,
         '{{ invocation_id }}' AS _dbt_run_id
 
-    FROM read_json_auto(
-        '{{ var("staging_path") }}/stations/stations.json',
-        format='array',
-        ignore_errors=false
-    )
+    FROM stations_raw
 )
 
-SELECT * FROM source_data
+SELECT * FROM surrogate_key_added

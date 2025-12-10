@@ -8,7 +8,7 @@ data/*
 data/staging/*
 
 # BUT keep the placeholder file
-!data/warehouse/.gitkeep
+!data/warehouse/
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/windows,linux,macos,python,jupyternotebooks

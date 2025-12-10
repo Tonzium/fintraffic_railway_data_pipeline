@@ -4,4 +4,4 @@ dbt_warehouse:
     dev:
       type: duckdb
       path: '../data/warehouse/warehouse.duckdb'
-      schema: main
+      schema: dev

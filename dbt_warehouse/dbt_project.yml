@@ -41,3 +41,13 @@ models:
         +materialized: incremental
         +unique_key: ['trainNumber', 'departureDate']
         +on_schema_change: 'append_new_columns'
+
+    # Silver layer configuration
+    silver:
+      +materialized: table
+      +schema: silver
+
+    # Gold layer configuration
+    gold:
+      +materialized: table
+      +schema: gold
