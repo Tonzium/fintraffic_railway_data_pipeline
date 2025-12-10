@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: gold_on_time_performance
+    description: '{{ doc("gold_on_time_performance") }}'
+    columns:
+      - name: metric_scope
+        description: "Dimension: Overall, train type, or category"
+        tests:
+          - not_null
+
+      - name: total_events
+        description: "Total number of station stops analyzed"
+
+      - name: on_time_percentage
+        description: "Percentage of stops that were on-time (<=5 min delay)"
+
+      - name: avg_delay_minutes
+        description: "Average delay across all stops"
+
+      - name: median_delay_minutes
+        description: "Median delay (50th percentile)"
+
+  - name: gold_ic_vs_hdm_comparison
+    description: '{{ doc("gold_ic_hdm_comparison") }}'
+    columns:
+      - name: train_type
+        description: "Train type: IC or HDM"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['IC', 'HDM']
+
+      - name: on_time_percentage
+        description: "Overall OTP for this train type"
+        tests:
+          - not_null
+
+      - name: avg_delay_minutes
+        description: "Average delay in minutes"
+
+      - name: performance_verdict
+        description: "Winner determination based on OTP comparison"
+        tests:
+          - not_null
