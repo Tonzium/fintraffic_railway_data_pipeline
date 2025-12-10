@@ -1,0 +1,14 @@
+services:
+  
+  evidence:
+    container_name: evidence-init
+    build:
+      context: .
+      dockerfile: bi/init.Dockerfile
+    volumes:
+      - ./bi/workspace:/evidence-workspace
+      - evidence_node_modules:/evidence-workspace/node_modules
+
+volumes:
+  evidence_node_modules:
+    name: evidence_node_modules
