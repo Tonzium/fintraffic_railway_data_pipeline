@@ -1,0 +1,67 @@
+version: 2
+
+models:
+  - name: silver_timetable_unnested
+    description: '{{ doc("silver_timetable_unnested") }}'
+    columns:
+      - name: trainNumber
+        tests:
+          - not_null
+      - name: departureDate
+        tests:
+          - not_null
+      - name: stationShortCode
+        tests:
+          - not_null
+      - name: scheduledTime
+        tests:
+          - not_null
+
+  - name: silver_fact_timetable_events
+    description: '{{ doc("silver_fact_timetable_events") }}'
+    columns:
+      - name: sk_event
+        description: "Surrogate key for each timetable event"
+        tests:
+          - unique
+          - not_null
+
+      - name: trainNumber
+        tests:
+          - not_null
+
+      - name: departureDate
+        tests:
+          - not_null
+
+      - name: event_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ARRIVAL', 'DEPARTURE']
+
+      - name: is_on_time
+        description: "Boolean: true if delay <= 5 minutes"
+
+      - name: delay_category
+        tests:
+          - accepted_values:
+              values: ['early', 'on_time', 'slightly_late', 'late', 'very_late', 'unknown']
+
+  - name: silver_dim_stations
+    description: '{{ doc("silver_dim_stations") }}'
+    columns:
+      - name: sk_station
+        description: "Surrogate key for station"
+        tests:
+          - unique
+          - not_null
+
+      - name: stationShortCode
+        description: "Station code (natural key)"
+        tests:
+          - unique
+          - not_null
+
+      - name: region
+        description: "Geographic region classification"
