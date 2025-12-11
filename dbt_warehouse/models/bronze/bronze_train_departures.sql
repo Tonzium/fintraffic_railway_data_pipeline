@@ -10,29 +10,28 @@
 ) }}
 
 WITH trains_raw AS (
-    SELECT *
+    SELECT
+        trainNumber::INTEGER as trainNumber,
+        departureDate::DATE as departureDate,
+        operatorUICCode::INTEGER as operatorUICCode,
+        operatorShortCode::VARCHAR as operatorShortCode,
+        trainType::VARCHAR as trainType,
+        trainCategory::VARCHAR as trainCategory,
+        commuterLineID::VARCHAR as commuterLineID,
+        runningCurrently::BOOLEAN as runningCurrently,
+        cancelled::BOOLEAN as cancelled,
+        version::BIGINT as version,
+        timetableType::VARCHAR as timetableType,
+        timetableAcceptanceDate::TIMESTAMP as timetableAcceptanceDate,
+        timeTableRows,  -- Let DuckDB auto-infer as STRUCT[]
+        filename
     FROM read_json(
         '{{ var("staging_path") }}/train_departure_date/**/*.json',
         format='array',
         filename=true,
         union_by_name=true,
         ignore_errors=false,
-        maximum_object_size=52428800,  -- 50MB per object
-        columns={
-            'trainNumber': 'INTEGER',
-            'departureDate': 'DATE',
-            'operatorUICCode': 'INTEGER',
-            'operatorShortCode': 'VARCHAR',
-            'trainType': 'VARCHAR',
-            'trainCategory': 'VARCHAR',
-            'commuterLineID': 'VARCHAR',
-            'runningCurrently': 'BOOLEAN',
-            'cancelled': 'BOOLEAN',
-            'version': 'BIGINT',
-            'timetableType': 'VARCHAR',
-            'timetableAcceptanceDate': 'TIMESTAMP',
-            'timeTableRows': 'JSON'  -- Keep nested as JSON
-        }
+        maximum_object_size=52428800  -- 50MB per object
     )
 ),
 

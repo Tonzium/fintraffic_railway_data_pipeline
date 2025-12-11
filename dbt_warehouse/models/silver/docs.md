@@ -8,7 +8,7 @@
 
 ## Purpose
 
-This model performs the **core technical transformation** - unnesting nested JSON without adding business logic. It serves as a foundation for downstream fact tables.
+This model performs the **core technical transformation** - unnesting nested STRUCT arrays without adding business logic. It serves as a foundation for downstream fact tables.
 
 ## Why Separate This?
 
@@ -37,14 +37,15 @@ This model performs the **core technical transformation** - unnesting nested JSO
 
 ### 1️⃣ UNNEST Operation
 ```sql
-CROSS JOIN UNNEST(t.timeTableRows) as t2(row)
+FROM train_base t,
+     UNNEST(t.timeTableRows)
 ```
 
-Expands nested array into individual rows.
+Expands nested STRUCT array into individual rows. DuckDB creates an implicit `unnest` column containing the struct fields.
 
 ### 2️⃣ Filters Applied
-- `WHERE NOT cancelled` - Exclude cancelled trains
-- `WHERE row.scheduledTime IS NOT NULL` - Only scheduled events
+- `WHERE NOT cancelled` - Exclude cancelled trains (applied in train_base CTE)
+- `WHERE unnest.scheduledTime IS NOT NULL` - Only scheduled events
 
 ### 3️⃣ Column Selection
 Minimal processing - just selecting needed columns:
@@ -70,15 +71,15 @@ Minimal processing - just selecting needed columns:
 - `trainType`: IC, S, HDM, etc.
 - `trainCategory`: Long-distance, Commuter, etc.
 
-### Event Attributes (from unnested row)
-- `stationShortCode`: Station code
-- `stationUICCode`: International station ID
-- `event_type`: ARRIVAL or DEPARTURE
-- `train_stopping`: Boolean
-- `commercial_stop`: Whether passengers can board
-- `scheduledTime`: ISO8601 string (NOT parsed yet)
-- `actualTime`: ISO8601 string (NOT parsed yet)
-- `delay_minutes`: Raw difference in minutes
+### Event Attributes (from unnested struct)
+- `stationShortCode`: Station code (from unnest.stationShortCode)
+- `stationUICCode`: International station ID (from unnest.stationUICCode)
+- `event_type`: ARRIVAL or DEPARTURE (from unnest.type)
+- `train_stopping`: Boolean (from unnest.trainStopping)
+- `commercial_stop`: Whether passengers can board (from unnest.commercialStop)
+- `scheduledTime`: ISO8601 string (from unnest.scheduledTime - NOT parsed yet)
+- `actualTime`: ISO8601 string (from unnest.actualTime - NOT parsed yet)
+- `delay_minutes`: Raw difference in minutes (from unnest.differenceInMinutes)
 
 ### Lineage
 - `_loaded_at`: When loaded into bronze
