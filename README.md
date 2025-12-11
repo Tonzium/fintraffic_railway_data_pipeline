@@ -2,6 +2,24 @@
 
 This repository contains a data platform setup for analyzing Finnish Railway data. It uses **uv** for Python management, **dbt** for data transformation, and **Evidence** for BI dashboards.
 
+Business goal was to analyze On-Time Performance (OTP) and delays of VR trains in Finland. The analysis investigates time-based patterns, train type comparisons, and station-level metrics to identify performance trends.
+
+## Dashboard Previews
+
+IC vs HDM train type performance comparison:
+
+<p align="center">
+  <img src="images/comparison.png" width="45%" alt="Comparison Dashboard" />
+  <img src="images/ic_vs_hdm.png" width="35%" alt="IC vs HDM Analysis" />
+</p>
+
+Train type and delay pattern analysis:
+
+<p align="center">
+  <img src="images/type_analysis.png" width="40%" alt="Train Type Analysis" />
+  <img src="images/delay.png" width="45%" alt="Delay Analysis" />
+</p>
+
 ## Prerequisites
 
 *   **Python 3.12+**
@@ -85,6 +103,16 @@ docker compose -f docker-compose.init.yml up --build
 docker compose -f docker-compose.init.yml down
 ```
 
+### Build evidence
+
+Build the docker if first time ( this needs to be rebuilded again everytime if new .sql tables are added)
+
+```bash
+docker compose build
+```
+
+**Rebuild:** If you add new packages or tables, run `docker compose build`.
+
 ### Start Dashboard (Dev Mode)
 Starts the server with hot-reloading (Watch Mode).
 
@@ -92,8 +120,13 @@ Starts the server with hot-reloading (Watch Mode).
 docker compose up --watch
 ```
 
+First time launching? Run this script to copy warehouse.duckdb file to docker volumes. This script also handles data ingestion if not commented.
+```bash
+cd scripts
+./update_data.sh
+```
+
 *   **Access Dashboard:** [http://localhost:3000](http://localhost:3000)
-*   **Rebuild:** If you add new packages, run `docker compose up --build`.
 
 ---
 
@@ -103,3 +136,4 @@ docker compose up --watch
 *   `dbt_warehouse/`: dbt project (SQL models, tests).
 *   `bi/`: Evidence project (Markdown reports).
 *   `data/`: Local data storage (ignored by git).
+*   `logs/`: dbt logs.
