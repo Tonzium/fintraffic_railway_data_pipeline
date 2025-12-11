@@ -1,6 +1,9 @@
 #!/bin/bash
 # Quick data fetching helper script for Finnish Railway Data
 
+# Navigate to project root
+cd "$(dirname "$0")/.." || exit 1
+
 # Colors for output
 BLACK='\033[0;30m'
 RED='\033[0;31m'
