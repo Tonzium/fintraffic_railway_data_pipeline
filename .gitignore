@@ -9,7 +9,7 @@ data/staging/*
 
 # BUT keep the placeholder file
 !data/warehouse/
-
+*.duckdb
 
 # Created by https://www.toptal.com/developers/gitignore/api/windows,linux,macos,python,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,linux,macos,python,jupyternotebooks
