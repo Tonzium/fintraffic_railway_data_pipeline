@@ -4,6 +4,8 @@ This repository contains a data platform setup for analyzing Finnish Railway dat
 
 Business goal was to analyze On-Time Performance (OTP) and delays of VR trains in Finland. The analysis investigates time-based patterns, train type comparisons, and station-level metrics to identify performance trends.
 
+**Dataset:** 3 months of data (September 2025 - December 2025) from Fintraffic Digitraffic API.
+
 ## Dashboard Previews
 
 IC vs HDM train type performance comparison:
