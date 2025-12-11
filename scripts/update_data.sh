@@ -1,20 +1,19 @@
 #!/bin/bash
 
+# If any errors stop this script
 set -e
 
 # Check that the first argument exists. If not, print usage:
-if [ -z "$1" ]; then
-    echo "Usage: $0 <start-date-ISO-format>"
-    exit 1
-fi
+#if [ -z "$1" ]; then
+#    echo "Usage: $0 <start-date-ISO-format>"
+#    exit 1
+#fi
 
 # Run ingestor script
-uv run python src/ingestor/jaateloauto.py \
-  --start_date $1 \
-  --trucks 1 2 3
+uv run python ../src/data_ingestion.py --start 2025-01-01 --end 2025-01-31
 
 # Run the dbt commands
-cd dbt_warehouse
+cd ../dbt_warehouse
 uv run dbt run
 uv run dbt docs generate
 cd ..
