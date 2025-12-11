@@ -1,4 +1,4 @@
-# Toni Data Platform
+# Fintraffic Railway data platform
 
 This repository contains a data platform setup for analyzing Finnish Railway data. It uses **uv** for Python management, **dbt** for data transformation, and **Evidence** for BI dashboards.
 
