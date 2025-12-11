@@ -1,0 +1,1 @@
+select * from dev_gold.gold_ic_vs_hdm_comparison

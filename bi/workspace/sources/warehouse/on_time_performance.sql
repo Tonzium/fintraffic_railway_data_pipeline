@@ -1,0 +1,1 @@
+select * from dev_gold.gold_on_time_performance

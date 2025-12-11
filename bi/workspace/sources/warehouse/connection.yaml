@@ -1,0 +1,5 @@
+# Connection config for warehouse DuckDB database
+name: warehouse
+type: duckdb
+options:
+  filename: warehouse.duckdb
