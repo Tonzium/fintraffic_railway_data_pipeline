@@ -32,6 +32,7 @@ ORDER BY scheduled_hour
     yFmt='#,##0.0"%"'
     y2Fmt='#,##0.00'
     chartAreaHeight=400
+    labels=True
 />
 
 ### Hourly Breakdown
@@ -187,21 +188,29 @@ GROUP BY is_weekend
 ORDER BY is_weekend
 ```
 
+```sql weekend_pivot
+SELECT
+    ROUND(SUM(CASE WHEN is_weekend = false AND is_on_time THEN 1.0 ELSE 0.0 END) / COUNT(CASE WHEN is_weekend = false THEN 1 END) * 100, 2) as weekday_otp,
+    ROUND(SUM(CASE WHEN is_weekend = true AND is_on_time THEN 1.0 ELSE 0.0 END) / COUNT(CASE WHEN is_weekend = true THEN 1 END) * 100, 2) as weekend_otp
+FROM warehouse.timetable_events
+WHERE actual_time IS NOT NULL AND commercial_stop = true
+```
+
 <Grid cols=2>
     <BigValue
-        data={weekend_summary.filter(d => d.period === 'Weekday')}
-        value=otp_percentage
+        data={weekend_pivot}
+        value=weekday_otp
+        comparison=weekend_otp
         fmt='#,##0.0"%"'
         title="Weekday OTP %"
-        comparison={weekend_summary.find(d => d.period === 'Weekend')?.otp_percentage}
         comparisonTitle="vs Weekend"
     />
     <BigValue
-        data={weekend_summary.filter(d => d.period === 'Weekend')}
-        value=otp_percentage
+        data={weekend_pivot}
+        value=weekend_otp
+        comparison=weekday_otp
         fmt='#,##0.0"%"'
         title="Weekend OTP %"
-        comparison={weekend_summary.find(d => d.period === 'Weekday')?.otp_percentage}
         comparisonTitle="vs Weekday"
     />
 </Grid>
