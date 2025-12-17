@@ -14,12 +14,17 @@ DEFAULT_END_DATE = datetime.now().strftime('%Y-%m-%d')
 ON_TIME_THRESHOLD = 5  # Train is "on time" if delay <= 5 minutes
 LATE_THRESHOLD = 15    # Train is "significantly late" if delay > 15 minutes
 
-# Data Storage
-DATA_DIR = "data"
-RAW_DATA_DIR = f"{DATA_DIR}/staging"
+import os
 
-# Data Warehouse Configuration
-WAREHOUSE_DIR = f"{DATA_DIR}/warehouse"
+# Get the directory of the current file (src/config.py)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Navigate up one level to get the project root
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+
+# Data Directories
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+RAW_DATA_DIR = os.path.join(DATA_DIR, "staging")
+WAREHOUSE_DIR = os.path.join(DATA_DIR, "warehouse")
 WAREHOUSE_DB = f"{WAREHOUSE_DIR}/warehouse.duckdb"
 WAREHOUSE_TEMP_DIR = f"{WAREHOUSE_DIR}/temp"
 
