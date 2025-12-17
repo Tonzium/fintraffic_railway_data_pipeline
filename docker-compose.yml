@@ -7,6 +7,8 @@ services:
       dockerfile: bi/Dockerfile
     ports:
       - "3000:3000"
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=8192
     volumes:
       # We will NOT be using this bind mount, since we have had
       # problems in Windows due to nodemon (or similar) file watcher
