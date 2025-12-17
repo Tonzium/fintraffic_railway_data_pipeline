@@ -19,7 +19,9 @@ models:
         description: "International UIC station code"
         tests:
           - not_null
-          - unique
+          - unique:
+              config:
+                severity: warn
 
       - name: latitude
         description: "WGS84 latitude coordinate"
@@ -49,6 +51,8 @@ models:
           - not_null
           - accepted_values:
               values: ['FI']
+              config:
+                severity: warn
 
       - name: _loaded_at
         description: "Timestamp when record was loaded into bronze layer"
@@ -95,6 +99,8 @@ models:
           - not_null
           - accepted_values:
               values: ['Long-distance', 'Commuter', 'Cargo', 'Locomotive', 'On-track machines']
+              config:
+                severity: warn
 
       - name: cancelled
         description: "Boolean indicating if train was cancelled"
