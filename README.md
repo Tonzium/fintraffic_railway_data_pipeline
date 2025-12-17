@@ -89,6 +89,7 @@ Process raw data into structured tables (Bronze -> Silver -> Gold).
     # Open the database in an interactive UI-like mode
     uv run duckdb -ui data/warehouse/warehouse.duckdb
     ```
+    **DuckDB UI Dashboard:** http://localhost:4213/
     *(Note: Path may vary depending on where your .duckdb file is located. Check `profiles.yml`)*
 
 ---
@@ -99,6 +100,17 @@ Evidence requires an initialization step on the first run to populate the worksp
 
 ### First Time Setup (Init)
 Run this once to scaffold the `bi/workspace` and install node modules:
+
+First time launching?
+Run this script to copy warehouse.duckdb file to docker volumes.
+This script also handles data ingestion if not commented.
+
+```bash
+cd scripts
+./update_data.sh
+```
+
+Run this only on first launch. This will default index.md file.
 
 ```bash
 docker compose -f docker-compose.init.yml up --build
@@ -122,12 +134,6 @@ Starts the server with hot-reloading (Watch Mode).
 docker compose up --watch
 ```
 
-First time launching? Run this script to copy warehouse.duckdb file to docker volumes. This script also handles data ingestion if not commented.
-```bash
-cd scripts
-./update_data.sh
-```
-
 *   **Access Dashboard:** [http://localhost:3000](http://localhost:3000)
 
 ---
@@ -139,3 +145,11 @@ cd scripts
 *   `bi/`: Evidence project (Markdown reports).
 *   `data/`: Local data storage (ignored by git).
 *   `logs/`: dbt logs.
+
+
+## Alternative: Quick Cargo Workflow:
+  1. Fresh clone
+  2. cargo build --release -> Watch automated setup messages
+  3. cargo run --release -> Evidence auto-initializes (first time only)
+  4. TUI appears -> Press 2 (fetch 30 days)
+  5. Dashboard launches automatically!
