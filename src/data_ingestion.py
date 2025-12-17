@@ -342,8 +342,8 @@ def parse_arguments():
     parser.add_argument(
         '--output-dir',
         type=str,
-        default='data/staging',
-        help='Base output directory (default: data/staging)'
+        default=RAW_DATA_DIR,
+        help=f'Base output directory (default: {RAW_DATA_DIR})'
     )
 
     parser.add_argument(
