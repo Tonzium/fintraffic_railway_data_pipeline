@@ -6,6 +6,25 @@ title: Train Type Performance Analysis 📊
 
 ## Overall Rankings
 
+```sql category_options
+SELECT DISTINCT trainCategory as category
+FROM warehouse.timetable_events
+WHERE trainCategory IS NOT NULL
+ORDER BY category
+```
+
+```sql event_dates
+SELECT MIN(actual_time) as actual_time FROM warehouse.timetable_events WHERE actual_time IS NOT NULL
+UNION ALL
+SELECT MAX(actual_time) as actual_time FROM warehouse.timetable_events WHERE actual_time IS NOT NULL
+```
+
+<Dropdown name=category_filter data={category_options} value=category title="Train Category">
+    <DropdownOption value="%" valueLabel="All Categories"/>
+</Dropdown>
+
+<DateRange name=date_filter data={event_dates} dates=actual_time title="Date Range"/>
+
 ```sql train_rankings
 SELECT
     trainType as train_type,
@@ -19,6 +38,8 @@ SELECT
 FROM warehouse.timetable_events
 WHERE actual_time IS NOT NULL
     AND commercial_stop = true
+    AND trainCategory LIKE '${inputs.category_filter.value}'
+    AND actual_time BETWEEN '${inputs.date_filter.start}' AND '${inputs.date_filter.end}'
 GROUP BY trainType, trainCategory
 HAVING COUNT(DISTINCT trainNumber || departureDate) >= 50
 ORDER BY otp_percentage DESC
@@ -219,21 +240,28 @@ GROUP BY category_group
 ORDER BY otp_percentage DESC
 ```
 
+```sql category_pivot
+SELECT
+    MAX(CASE WHEN category_group = 'Commuter' THEN otp_percentage END) as commuter_otp,
+    MAX(CASE WHEN category_group = 'Long-distance' THEN otp_percentage END) as long_distance_otp
+FROM ${category_comparison}
+```
+
 <Grid cols=2>
     <BigValue
-        data={category_comparison.filter(d => d.category_group === 'Commuter')}
-        value=otp_percentage
+        data={category_pivot}
+        value=commuter_otp
         fmt='#,##0.0"%"'
         title="Commuter OTP %"
-        comparison={category_comparison.find(d => d.category_group === 'Long-distance')?.otp_percentage}
+        comparison=long_distance_otp
         comparisonTitle="vs Long-distance"
     />
     <BigValue
-        data={category_comparison.filter(d => d.category_group === 'Long-distance')}
-        value=otp_percentage
+        data={category_pivot}
+        value=long_distance_otp
         fmt='#,##0.0"%"'
         title="Long-distance OTP %"
-        comparison={category_comparison.find(d => d.category_group === 'Commuter')?.otp_percentage}
+        comparison=commuter_otp
         comparisonTitle="vs Commuter"
     />
 </Grid>

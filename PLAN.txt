@@ -1,0 +1,65 @@
+The plan is written to docs/DEMO_ROADMAP.md — six milestones with checkboxes, "done when" criteria for each, and a
+  session-by-session pacing table at the bottom.
+
+  The milestone arc:
+
+  - M0 — Cleanup & quick wins (½ day): delete the leftover Evidence template source (needful_things), replace the static "Data
+  updated" text with a real MAX(actual_time) freshness footer, move the live-demo link to the top of the README, favicon + page
+  titles.
+  - M1 — Story & interactivity (1–2 days): narrative headline with interpolated values, insight callouts, rush-hour bands on the
+  hourly chart, Dropdown/DateRange filters (these work on the static build via DuckDB WASM).
+  - M2 — Station map of Finland (1 day): the biggest visual win. New gold_station_performance model + Evidence BubbleMap page — I
+  verified silver_dim_stations already carries latitude/longitude, so this needs no new ingestion.
+  - M3 — About page (½ day): architecture diagram and stack rationale inside the dashboard itself, since visitors won't read the
+  GitHub README.
+  - M4 — Proxmox deploy & hardening (1 day): LXC nesting flag, first-run 90-day backfill in entrypoint.sh (right now a fresh deploy
+  would show only 7 thin days), healthchecks, Uptime Kuma, backups. Your compose already has restart policies and the 4 GB Node heap
+  fix, so those aren't repeated.
+  - M5 — Stretch: the weather × delays page ("Do Finnish trains slow down in snow?") built on your existing lake data.
+
+  Key advice baked into the pacing: ship after M2 — a live site with a story and a map of Finland is already link-worthy; M3–M4 make
+  it durable and M5 makes it memorable.
+
+  When you're ready to start, I can implement M0 right now — it's all mechanical (delete template source, freshness query, README
+  reorder) and would take one pass.
+
+What is done?
+
+Summary
+
+  I worked through M0–M3 of the demo roadmap (docs/DEMO_ROADMAP.md) and verified every change in an actual browser via Playwright
+  against the live dev server — not just build success.
+
+  M0 — Cleanup
+  - Removed bi/workspace/sources/needful_things/ (Evidence template leftovers)
+  - Real data-freshness footer on the homepage (queries MAX(actual_time), currently shows "Data through 2025-12-11 00:00, refreshed
+  daily at 07:00 EET")
+  - Live demo link moved to the top of the README
+  - Added a simple branded favicon (generated via raw PNG bytes — no Pillow available; it's a basic solid-color glyph, worth swapping
+  for a real logo)
+
+  M1 — Story & interactivity
+  - Homepage now leads with "Are Finnish trains on time?" plus interpolated stats, 3 insight callouts (best/worst category, worst
+  hour), and shaded ReferenceArea rush-hour bands on the hourly chart
+  - Added Dropdown (train category) + DateRange filters to train_performance.md
+
+  M2 — Station map (the "biggest visual win")
+  - New gold_station_performance dbt model, new Evidence source, new /stations page with a <BubbleMap> of all 176 qualifying stations
+  sized by traffic and colored by delay, plus "most delayed" and "busiest" tables
+
+  M3 — About page
+  - New /about page with an inline SVG architecture diagram (Digitraffic → Python → dbt → Evidence → nginx → Cloudflare Tunnel), stack
+  rationale, and a link to the real GitHub repo
+
+  Bonus fixes found while verifying:
+  - A pre-existing bug on train_performance.md — the "Commuter vs Long-Distance" BigValue comparisons were silently erroring (passing
+  a raw number where Evidence expects a column name); fixed with a pivot query
+  - The DateRange filter was shipping 5.5 million rows to the browser just to compute a min/max bound — replaced with a 2-row query
+
+  Not done: M4 (actual Proxmox deployment) needs your infrastructure access, and M5 (weather × delays) is the stretch goal — both left
+  as-is in the roadmap. I checked off the completed items in docs/DEMO_ROADMAP.md with notes on any deviations. Nothing has been
+  committed — let me know if you want me to commit this.
+
+
+
+

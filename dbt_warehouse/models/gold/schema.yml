@@ -43,3 +43,27 @@ models:
         description: "Winner determination based on OTP comparison"
         tests:
           - not_null
+
+  - name: gold_station_performance
+    description: "Per-station traffic volume and on-time performance, for the station map"
+    columns:
+      - name: station_code
+        description: "Station short code"
+        tests:
+          - not_null
+          - unique
+
+      - name: latitude
+        description: "Station latitude"
+
+      - name: longitude
+        description: "Station longitude"
+
+      - name: total_events
+        description: "Total commercial stop events analyzed at this station"
+
+      - name: on_time_percentage
+        description: "Percentage of stops that were on-time (<=5 min delay)"
+
+      - name: avg_delay_minutes
+        description: "Average delay across all stops at this station"
