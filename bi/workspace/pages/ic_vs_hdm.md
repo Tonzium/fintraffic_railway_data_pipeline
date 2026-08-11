@@ -181,6 +181,7 @@ ORDER BY trainType,
     swapXY=false
     colorPalette={['#ef4444', '#22c55e']}
     type="grouped"
+    labels=true
 />
 
 <DataTable data={delay_distribution}>

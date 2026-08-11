@@ -83,6 +83,7 @@ ORDER BY
     title="Performance by Time of Day"
     yFmt='#,##0.0"%"'
     colorPalette={['#f59e0b', '#3b82f6', '#f59e0b']}
+    labels=true
 />
 
 **Insight:** {
@@ -409,6 +410,7 @@ ORDER BY scheduled_hour,
     type="stacked100"
     colorPalette={['#f63b3bff', '#c59422ff', '#0014f3e1', '#44ef5bbe', '#38dc26ff']}
     chartAreaHeight=400
+    labels=true
 />
 
 **Pattern:** Delays tend to {

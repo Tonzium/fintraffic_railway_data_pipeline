@@ -45,7 +45,7 @@ ORDER BY otp_percentage ASC
 LIMIT 1
 ```
 
-**{overall_metrics[0]?.otp_percentage}% of trains are on time overall** — but the morning rush (6–9 AM) tells a different story, where on-time performance drops to **{rush_stats[0]?.morning_rush_otp}%**.
+**{overall_metrics[0]?.otp_percentage}% of trains are on time overall** — in the morning rush (6–9 AM), on-time performance is **{rush_stats[0]?.morning_rush_otp}%**, {rush_stats[0]?.morning_rush_otp < overall_metrics[0]?.otp_percentage ? 'below' : 'slightly above'} the overall average.
 
 <Grid cols=3>
     <Alert status="success">
@@ -110,6 +110,7 @@ ORDER BY on_time_percentage DESC
     title="On-Time Performance by Train Category"
     yFmt='#,##0.0"%"'
     colorPalette={['#22c55e', '#3b82f6', '#f59e0b', '#ef4444']}
+    labels=true
 />
 
 <DataTable data={train_category_performance}>

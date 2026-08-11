@@ -54,6 +54,7 @@ ORDER BY otp_percentage DESC
     swapXY=true
     colorPalette={['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6']}
     chartAreaHeight=400
+    labels=true
 />
 
 ---
@@ -140,6 +141,7 @@ ORDER BY trainType,
     type="stacked100"
     colorPalette={['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#dc2626']}
     chartAreaHeight=400
+    labels=true
 />
 
 ---
