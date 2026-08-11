@@ -33,6 +33,14 @@ WHERE metric_scope IN ('Long-distance', 'Commuter', 'Cargo', 'Locomotive')
 ORDER BY on_time_percentage DESC
 ```
 
+```sql data_coverage
+SELECT
+    COUNT(DISTINCT departureDate) as days_covered,
+    MIN(CAST(departureDate AS DATE)) as oldest_day,
+    MAX(CAST(departureDate AS DATE)) as newest_day
+FROM warehouse.timetable_events
+```
+
 ```sql worst_hour
 SELECT
     scheduled_hour,
@@ -84,6 +92,27 @@ LIMIT 1
         value=stations_served
         fmt='#,###'
         title="Stations Served"
+    />
+</Grid>
+
+<Grid cols=3>
+    <BigValue
+        data={data_coverage}
+        value=days_covered
+        fmt='#,###" days"'
+        title="Days of Data"
+    />
+    <BigValue
+        data={data_coverage}
+        value=oldest_day
+        fmt='mmm d, yyyy'
+        title="Oldest Data"
+    />
+    <BigValue
+        data={data_coverage}
+        value=newest_day
+        fmt='mmm d, yyyy'
+        title="Newest Data"
     />
 </Grid>
 

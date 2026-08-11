@@ -1,5 +1,6 @@
 ---
 title: IC vs HDM Performance Analysis 🎯
+sidebar_position: 2
 ---
 
 # InterCity vs Helsinki-Turku: Head-to-Head Comparison
@@ -12,31 +13,7 @@ SELECT
 FROM warehouse.timetable_events
 ```
 
-_Data covers **{fmt(data_period[0]?.first_day, 'longdate')} – {fmt(data_period[0]?.last_day, 'longdate')}** ({data_period[0]?.days_covered} days). The summary table below is all-time; use the time period selector in Key Metrics Comparison to narrow the range._
-
-```sql comparison_summary
-SELECT
-    train_type,
-    on_time_percentage,
-    avg_delay_minutes,
-    total_trains,
-    total_stops,
-    stations_served,
-    performance_verdict
-FROM warehouse.train_compare
-ORDER BY on_time_percentage DESC
-```
-
-## 🏆 Performance Winner
-
-<Alert status="success">
-    <strong>{comparison_summary.find(d => d.performance_verdict === 'Winner: Better OTP')?.train_type ?? 'N/A'}</strong> trains significantly outperform with <strong>{comparison_summary.find(d => d.performance_verdict === 'Winner: Better OTP')?.on_time_percentage ?? 0}%</strong> on-time performance.  
-    <strong>HDM trains are the clear winner</strong> across all metrics. However, IC trains face significantly more operational complexity (7x more trains, 2.6x more stations) which explains the performance gap.
-</Alert>
-
----
-
-## Key Metrics Comparison
+_Data covers **{fmt(data_period[0]?.first_day, 'longdate')} – {fmt(data_period[0]?.last_day, 'longdate')}** ({data_period[0]?.days_covered} days). All numbers on this page follow the time period selected below._
 
 <Dropdown name=period title="Time period" defaultValue=7>
     <DropdownOption value=1 valueLabel="Last 1 day"/>
@@ -71,6 +48,31 @@ WHERE train_type = 'HDM'
 SELECT * FROM ${metrics_filtered}
 WHERE train_type = 'IC'
 ```
+
+```sql comparison_summary
+SELECT * FROM ${metrics_filtered}
+ORDER BY on_time_percentage DESC
+```
+
+## 🏆 Performance Winner
+
+<Alert status="success">
+    <strong>{comparison_summary[0]?.train_type}</strong> wins this period: <strong>{comparison_summary[0]?.on_time_percentage}%</strong> on-time vs <strong>{comparison_summary[1]?.train_type}</strong> at <strong>{comparison_summary[1]?.on_time_percentage}%</strong>.
+    Note that IC faces more operational complexity ({(ic_metrics[0]?.total_trains && hdm_metrics[0]?.total_trains) ? Math.round(ic_metrics[0].total_trains / hdm_metrics[0].total_trains * 10) / 10 : '?'}x more trains, {(ic_metrics[0]?.stations_served && hdm_metrics[0]?.stations_served) ? Math.round(ic_metrics[0].stations_served / hdm_metrics[0].stations_served * 10) / 10 : '?'}x more stations), which helps explain the gap.
+</Alert>
+
+<DataTable data={comparison_summary}>
+    <Column id=train_type title="Train Type"/>
+    <Column id=on_time_percentage title="OTP %" fmt='#,##0.00"%"'/>
+    <Column id=avg_delay_minutes title="Avg Delay (min)" fmt='#,##0.00'/>
+    <Column id=total_trains title="Trains" fmt='#,###'/>
+    <Column id=total_stops title="Stops" fmt='#,###'/>
+    <Column id=stations_served title="Stations" fmt='#,###'/>
+</DataTable>
+
+---
+
+## Key Metrics Comparison
 
 ### 🚄 HDM (Helsinki-Turku)
 
@@ -241,7 +243,7 @@ SELECT
           MAX(CASE WHEN train_type = 'HDM' THEN avg_delay_minutes END), 2) as delay_gap,
     ROUND(MAX(CASE WHEN train_type = 'IC' THEN avg_delay_minutes END) /
           MAX(CASE WHEN train_type = 'HDM' THEN avg_delay_minutes END), 2) as delay_multiplier
-FROM warehouse.train_compare
+FROM ${metrics_filtered}
 ```
 
 <Grid cols=3>

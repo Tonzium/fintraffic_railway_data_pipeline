@@ -1,8 +1,7 @@
 ---
 title: About this Project ℹ️
+sidebar_position: 5
 ---
-
-# About this Project
 
 This dashboard is the front end of a small end-to-end data platform: it fetches real
 Finnish railway data, transforms it through a layered warehouse, and rebuilds itself

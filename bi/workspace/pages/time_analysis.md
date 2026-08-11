@@ -1,5 +1,6 @@
 ---
 title: Time-Based Performance Analysis ⏰
+sidebar_position: 4
 ---
 
 # Performance Patterns Over Time
