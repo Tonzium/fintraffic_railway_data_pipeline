@@ -5,7 +5,7 @@ FROM node:20-bookworm-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl ca-certificates rsync tzdata && \
+    git curl ca-certificates rsync tzdata util-linux && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

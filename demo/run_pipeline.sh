@@ -3,6 +3,15 @@
 # Publishes the built site into /site (served by nginx).
 set -euo pipefail
 
+# Only one run at a time. Two concurrent runs race on dbt_packages/: one run's
+# `dbt deps` reinstalls the packages while the other is mid-`dbt build`, which
+# fails with "No dbt_project.yml found at .../dbt_packages/dbt_utils".
+exec 200>/tmp/pipeline.lock
+if ! flock -n 200; then
+    echo "=== [$(date)] Another pipeline run is already in progress; skipping. ==="
+    exit 0
+fi
+
 cd /app
 
 START=$(date -d "-${BACKFILL_DAYS:-7} days" +%F)
