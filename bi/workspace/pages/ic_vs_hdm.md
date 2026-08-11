@@ -4,6 +4,16 @@ title: IC vs HDM Performance Analysis 🎯
 
 # InterCity vs Helsinki-Turku: Head-to-Head Comparison
 
+```sql data_period
+SELECT
+    MIN(CAST(departureDate AS DATE)) as first_day,
+    MAX(CAST(departureDate AS DATE)) as last_day,
+    COUNT(DISTINCT departureDate) as days_covered
+FROM warehouse.timetable_events
+```
+
+_Data covers **{fmt(data_period[0]?.first_day, 'longdate')} – {fmt(data_period[0]?.last_day, 'longdate')}** ({data_period[0]?.days_covered} days). The summary table below is all-time; use the time period selector in Key Metrics Comparison to narrow the range._
+
 ```sql comparison_summary
 SELECT
     train_type,
@@ -28,13 +38,37 @@ ORDER BY on_time_percentage DESC
 
 ## Key Metrics Comparison
 
+<Dropdown name=period title="Time period" defaultValue=7>
+    <DropdownOption value=1 valueLabel="Last 1 day"/>
+    <DropdownOption value=3 valueLabel="Last 3 days"/>
+    <DropdownOption value=7 valueLabel="Last 7 days"/>
+    <DropdownOption value=30 valueLabel="Last 30 days"/>
+    <DropdownOption value=100000 valueLabel="All time"/>
+</Dropdown>
+
+```sql metrics_filtered
+SELECT
+    trainType as train_type,
+    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as on_time_percentage,
+    ROUND(AVG(delay_minutes), 2) as avg_delay_minutes,
+    COUNT(DISTINCT trainNumber || '_' || departureDate) as total_trains,
+    COUNT(*) as total_stops,
+    COUNT(DISTINCT stationShortCode) as stations_served
+FROM warehouse.timetable_events
+WHERE trainType IN ('IC', 'HDM')
+    AND actual_time IS NOT NULL
+    AND commercial_stop = true
+    AND CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_events) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
+GROUP BY trainType
+```
+
 ```sql hdm_metrics
-SELECT * FROM warehouse.train_compare
+SELECT * FROM ${metrics_filtered}
 WHERE train_type = 'HDM'
 ```
 
 ```sql ic_metrics
-SELECT * FROM warehouse.train_compare
+SELECT * FROM ${metrics_filtered}
 WHERE train_type = 'IC'
 ```
 
@@ -124,6 +158,7 @@ FROM warehouse.timetable_events
 WHERE trainType IN ('IC', 'HDM')
     AND actual_time IS NOT NULL
     AND commercial_stop = true
+    AND CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_events) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
 GROUP BY trainType, delay_category
 ORDER BY trainType,
     CASE delay_category
@@ -170,6 +205,7 @@ FROM warehouse.timetable_events
 WHERE trainType IN ('IC', 'HDM')
     AND actual_time IS NOT NULL
     AND commercial_stop = true
+    AND CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_events) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
 GROUP BY scheduled_hour, trainType
 ORDER BY scheduled_hour, trainType
 ```
