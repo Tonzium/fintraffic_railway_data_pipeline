@@ -42,8 +42,8 @@ WITH stops AS (
     GROUP BY trainType, trainCategory
 ),
 -- Trains and stations with at least one stop in the range: their actual-day span overlaps it.
--- A range whose start equals its end only matches stops stamped exactly 00:00:00, which in
--- practice never reach 50 trains, so it shows no rows.
+-- A range whose start equals its end is the single instant <start> 00:00:00 and only matches
+-- stops stamped exactly at midnight, which midnight_days lists.
 trains AS (
     SELECT
         trainType,
@@ -51,9 +51,13 @@ trains AS (
         SUM(n_trains) as trains
     FROM warehouse.train_spans
     WHERE trainCategory LIKE '${inputs.category_filter.value}'
-        AND first_actual_bucket <= '${inputs.date_filter.end}'
-        AND last_actual_bucket >= '${inputs.date_filter.start}'
-        AND '${inputs.date_filter.start}' < '${inputs.date_filter.end}'
+        AND CASE
+            WHEN '${inputs.date_filter.start}' < '${inputs.date_filter.end}'
+                THEN first_actual_bucket <= '${inputs.date_filter.end}' AND last_actual_bucket >= '${inputs.date_filter.start}'
+            WHEN '${inputs.date_filter.start}' = '${inputs.date_filter.end}'
+                THEN contains(midnight_days, '${inputs.date_filter.start}')
+            ELSE false
+        END
     GROUP BY trainType, trainCategory
 ),
 stations AS (
@@ -63,8 +67,13 @@ stations AS (
         COUNT(DISTINCT stationShortCode) as stations_served
     FROM warehouse.station_presence
     WHERE trainCategory LIKE '${inputs.category_filter.value}'
-        AND first_actual_bucket <= '${inputs.date_filter.end}'
-        AND last_actual_bucket >= '${inputs.date_filter.start}'
+        AND CASE
+            WHEN '${inputs.date_filter.start}' < '${inputs.date_filter.end}'
+                THEN first_actual_bucket <= '${inputs.date_filter.end}' AND last_actual_bucket >= '${inputs.date_filter.start}'
+            WHEN '${inputs.date_filter.start}' = '${inputs.date_filter.end}'
+                THEN contains(midnight_days, '${inputs.date_filter.start}')
+            ELSE false
+        END
     GROUP BY trainType, trainCategory
 )
 SELECT

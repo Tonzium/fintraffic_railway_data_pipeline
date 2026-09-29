@@ -365,7 +365,7 @@ and at 365 days of history each has at most a few tens of thousands of rows.
 | `gold_daily_performance` | actual day x trainType x trainCategory x day_of_week x scheduled_month | date range (Train Performance) |
 | `gold_hourly_delay_categories` | scheduled_hour x trainType x trainCategory x delay_category (all time) | none |
 | `gold_delay_histogram` | trainType x integer delay_minutes (all time) | none |
-| `gold_train_spans` | departureDate x trainType x trainCategory x first/last actual day x has_* flags | period, date range |
+| `gold_train_spans` | departureDate x trainType x trainCategory x first/last actual day x midnight_days x has_* flags | period, date range |
 | `gold_station_presence` | trainType x trainCategory x station x run of consecutive actual days | date range |
 | `gold_ic_hdm_station_daily` | departureDate x trainType (IC/HDM) x station | period (IC vs HDM) |
 | `gold_ic_hdm_hourly_daily` | departureDate x trainType (IC/HDM) x scheduled_hour x delay_category | period (IC vs HDM) |
@@ -410,19 +410,24 @@ summed across rows, so they get their own models:
 * `gold_train_spans.n_trains` can be summed over departureDate, trainType and trainCategory,
   because a train has exactly one of each. Per time of day or weekday/weekend, use
   `SUM(n_trains) FILTER (WHERE has_...)`: a train in both groups counts in both, as before.
-* Date range `actual_time BETWEEN '<start>' AND '<end>'`: a train or station had a stop in the
-  range when `first_actual_bucket <= '<end>' AND last_actual_bucket >= '<start>'`. This overlap
-  test is exact under two conditions:
-  1. `<start>` < `<end>`. Then the range is at least 24 h long and cannot fall inside the gap
-     between two buckets of one train or one station run. When `<start>` = `<end>`, the event-level
-     filter matches only stops stamped exactly 00:00:00, which the overlap test cannot tell
-     apart, so the Train Performance page adds `'<start>' < '<end>'` to its train filter and shows
-     no rows then (the event-level query in practice also showed none, as it needs 50 trains).
-     A range with `<start>` > `<end>` is empty either way.
-  2. For `gold_train_spans`: no train has more than 24 h between the actual days of its commercial
-     stops, i.e. a train stays within two UTC days (warn test on `gold_train_spans`).
-     `gold_station_presence` needs no such condition, because its runs are built to break at
-     every gap of more than 24 h.
+* Date range `actual_time BETWEEN '<start>' AND '<end>'` (both `YYYY-MM-DD`), for a train
+  (`gold_train_spans`) or a station run (`gold_station_presence`):
+  * `<start>` < `<end>`: it had a stop in the range when
+    `first_actual_bucket <= '<end>' AND last_actual_bucket >= '<start>'`. The range is then at
+    least 24 h long, so it cannot fall inside the gap between two buckets of one train or one
+    station run. For `gold_train_spans` this needs every train to stay within two UTC days, i.e.
+    no more than 24 h between the actual days of its commercial stops (warn test on
+    `gold_train_spans`). `gold_station_presence` needs no such condition, because its runs are
+    built to break at every gap of more than 24 h.
+  * `<start>` = `<end>`: the range is the single instant `<start> 00:00:00`, which only stops
+    stamped exactly at midnight match. The overlap test cannot see those, so both models carry
+    `midnight_days`, the sorted comma-separated `YYYY-MM-DD` days with such a stop (`''` when
+    none), and the filter is `contains(midnight_days, '<start>')`. This is exact.
+  * `<start>` > `<end>`: empty, as `BETWEEN` is.
+
+  The Train Performance page writes the three cases as one `CASE` in its `WHERE` clause.
+  `midnight_days` is a non-null VARCHAR on purpose: Evidence ships a timestamp column that is NULL
+  on every row as a DOUBLE, which could not be compared with a date string.
 * The page SQL joins these distinct counts to the additive measures with
   `IS NOT DISTINCT FROM`, so a NULL trainType or trainCategory stays its own row, as it did with
   `GROUP BY` on the events.

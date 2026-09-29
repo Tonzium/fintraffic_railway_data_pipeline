@@ -74,10 +74,12 @@ models:
   # event-level timetable_events source; every page query is answered exactly
   # from these tables.
   #
-  # trainType / trainCategory not_null tests are warnings: Digitraffic always
-  # sets both, and the page SQL joins on them NULL-safely (IS NOT DISTINCT FROM),
-  # so a NULL key must not stop the daily pipeline. The other not_null columns
-  # are guaranteed by the model SQL or already tested in silver.
+  # not_null tests on columns copied from the events (trainType, trainCategory,
+  # scheduled_hour, stationShortCode) are warnings: Digitraffic always sets them,
+  # and the models and page SQL treat a NULL like GROUP BY / COUNT(DISTINCT) on
+  # the events did (the page joins NULL-safely with IS NOT DISTINCT FROM), so a
+  # NULL value must not stop the daily pipeline. The other not_null columns are
+  # guaranteed by the model SQL or already tested in silver.
   # ---------------------------------------------------------------------------
 
   - name: gold_daily_performance
@@ -140,7 +142,9 @@ models:
     columns:
       - name: scheduled_hour
         tests:
-          - not_null
+          - not_null:
+              config:
+                severity: warn
       - name: time_of_day_category
         tests:
           - not_null
@@ -197,7 +201,8 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: ['departureDate', 'trainType', 'trainCategory', 'first_actual_bucket', 'last_actual_bucket',
-                                     'has_morning_rush', 'has_off_peak', 'has_evening_rush', 'has_weekday', 'has_weekend']
+                                     'midnight_days', 'has_morning_rush', 'has_off_peak', 'has_evening_rush', 'has_weekday',
+                                     'has_weekend']
       - dbt_utils.expression_is_true:
           arguments:
             expression: "first_actual_bucket <= last_actual_bucket AND n_trains >= 1"
@@ -228,6 +233,12 @@ models:
       - name: last_actual_bucket
         tests:
           - not_null
+      - name: midnight_days
+        description: >
+          Sorted comma-separated 'YYYY-MM-DD' days on which the train had a commercial stop stamped
+          exactly 00:00:00; '' when none. Answers date ranges whose start equals their end.
+        tests:
+          - not_null
       - name: n_trains
         tests:
           - not_null
@@ -256,8 +267,16 @@ models:
                 severity: warn
       - name: stationShortCode
         tests:
-          - not_null
+          - not_null:
+              config:
+                severity: warn
       - name: first_actual_bucket
+        tests:
+          - not_null
+      - name: midnight_days
+        description: >
+          Sorted comma-separated 'YYYY-MM-DD' days of the run with a stop stamped exactly 00:00:00;
+          '' when none. Answers date ranges whose start equals their end.
         tests:
           - not_null
 
@@ -281,7 +300,9 @@ models:
                 values: ['IC', 'HDM']
       - name: stationShortCode
         tests:
-          - not_null
+          - not_null:
+              config:
+                severity: warn
 
   - name: gold_ic_hdm_hourly_daily
     description: >

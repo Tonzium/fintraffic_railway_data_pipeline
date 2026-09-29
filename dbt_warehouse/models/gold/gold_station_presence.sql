@@ -9,11 +9,18 @@
 --        maximal sequence of actual-day buckets (same stamp as gold_daily_performance.actual_bucket)
 --        with at most 24 h between consecutive buckets, i.e. consecutive days.
 --
--- A station had at least one event in "actual_time BETWEEN '<start>' AND '<end>'" (start < end)
--- exactly when one of its runs satisfies
---     first_actual_bucket <= '<end>' AND last_actual_bucket >= '<start>'
--- The range is at least 24 h long, so it cannot fall inside the <= 24 h gap between two buckets
--- of the same run. Count stations with COUNT(DISTINCT stationShortCode).
+-- A station had at least one event in "actual_time BETWEEN '<start>' AND '<end>'" exactly when
+-- one of its runs satisfies
+--   * start < end: first_actual_bucket <= '<end>' AND last_actual_bucket >= '<start>'
+--     The range is at least 24 h long, so it cannot fall inside the <= 24 h gap between two
+--     buckets of the same run.
+--   * start = end: contains(midnight_days, '<start>'). The range is the single instant
+--     <start> 00:00:00, so only stops stamped exactly at midnight match.
+--   * start > end: never.
+-- Count stations with COUNT(DISTINCT stationShortCode).
+--
+-- midnight_days lists, as sorted comma-separated 'YYYY-MM-DD' strings, the days of the run with
+-- a stop stamped exactly 00:00:00 ('' when none). Non-null VARCHAR, so Evidence keeps its type.
 
 {{ config(
     materialized='table',
@@ -62,6 +69,10 @@ SELECT
     trainCategory,
     stationShortCode,
     MIN(actual_bucket) as first_actual_bucket,
-    MAX(actual_bucket) as last_actual_bucket
+    MAX(actual_bucket) as last_actual_bucket,
+    COALESCE(string_agg(
+        CASE WHEN actual_bucket = date_trunc('day', actual_bucket) THEN strftime(actual_bucket, '%Y-%m-%d') END,
+        ',' ORDER BY actual_bucket
+    ), '') as midnight_days
 FROM numbered
 GROUP BY trainType, trainCategory, stationShortCode, run_number
