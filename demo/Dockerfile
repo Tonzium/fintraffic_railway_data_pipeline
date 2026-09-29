@@ -24,12 +24,17 @@ COPY src ./src
 COPY dbt_warehouse ./dbt_warehouse
 COPY bi/workspace ./bi/workspace
 
+# Install dbt packages at build time, so daily runs do not depend on hub.getdbt.com
+RUN cd dbt_warehouse && uv run --frozen --no-dev dbt deps
+
 COPY demo/run_pipeline.sh demo/entrypoint.sh /app/demo/
 RUN sed -i 's/\r$//' /app/demo/*.sh && chmod +x /app/demo/*.sh
 
 ENV TZ=Europe/Helsinki \
     NODE_OPTIONS=--max-old-space-size=4096 \
     BACKFILL_DAYS=7 \
+    RETENTION_DAYS=365 \
+    RUN_TIMEOUT=3h \
     UPDATE_HOUR=7
 
 CMD ["bash", "/app/demo/entrypoint.sh"]
