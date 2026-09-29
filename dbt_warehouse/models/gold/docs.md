@@ -101,7 +101,8 @@ This model answers critical business questions:
 
 ## Build Memory
 
-The commercial-event CTE is read by three aggregations (overall, per type, per category).
+The commercial-event CTE is read four times: by the train-level CTE and by three aggregations
+(overall, per type, per category).
 DuckDB 1.4 materialises a CTE that is referenced more than once, so it is declared
 `NOT MATERIALIZED` and selects only the eight columns the aggregations use. Train counts come
 from a small train-level CTE (one row per trainNumber, departureDate, type and category) instead
@@ -125,14 +126,13 @@ ORDER BY on_time_percentage DESC;
 ## Refresh Frequency
 
 🔄 **Recommendation**: Daily refresh after new data ingestion  
-⚡ **Build Time**: ~0.3 seconds (optimized aggregations)  
 
 ## Model Lineage
 
 ```
 bronze_train_departures
     ↓
-silver_timetable_events
+silver_fact_timetable_events
     ↓
 gold_on_time_performance ← YOU ARE HERE
 ```
@@ -282,7 +282,7 @@ WHERE trainType IN ('IC', 'HDM', 'S')  -- Add 'S' for example
 ```
 bronze_train_departures
     ↓
-silver_timetable_events
+silver_fact_timetable_events
     ↓
 gold_ic_vs_hdm_comparison ← YOU ARE HERE
 ```
@@ -346,7 +346,7 @@ END
 
 ### Usage in Models
 
-These categories are calculated in **silver_timetable_events** and aggregated in all gold models to provide consistent delay analysis across the platform.
+These categories are calculated in **silver_fact_timetable_events** and aggregated in all gold models to provide consistent delay analysis across the platform.
 
 {% enddocs %}
 

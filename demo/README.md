@@ -48,13 +48,15 @@ The first run fetches data, so the site appears after the pipeline finishes
 | Variable | Default | Meaning |
 |---|---|---|
 | `CLOUDFLARE_TUNNEL_TOKEN` | — | tunnel token (required for public access) |
-| `COMPOSE_FILE` | — | set to `docker-compose.demo.yml` on the server so plain `docker compose` uses this stack |
+| `COMPOSE_FILE` | — | server only: `docker-compose.demo.yml`, so plain `docker compose` uses this stack (leave unset on a dev machine) |
 | `TZ` | `Europe/Helsinki` | timezone for the 07:00 schedule |
 | `UPDATE_HOUR` | `7` | hour of day for the daily refresh |
 | `BACKFILL_DAYS` | `7` | how many past days to re-fetch and reload each run |
 | `RETENTION_DAYS` | `365` | days of history kept; older raw files and warehouse rows are deleted |
 | `RUN_TIMEOUT` | `3h` | a run taking longer is killed and retried at the next schedule |
-| `NODE_OPTIONS` | `--max-old-space-size=4096` | Node heap for the Evidence build |
+| `NODE_OPTIONS` | `--max-old-space-size=4096` | Node heap for the Evidence build (needs at least 2048 MB) |
+| `DUCKDB_MEMORY_LIMIT` | `4GB` | DuckDB memory cap for dbt; big loads spill to disk above it |
+| `DUCKDB_THREADS` | `2` | DuckDB threads for dbt |
 
 After editing `.env`, recreate the container: `docker compose -f docker-compose.demo.yml up -d pipeline`.
 
@@ -64,16 +66,18 @@ After editing `.env`, recreate the container: `docker compose -f docker-compose.
 # Force a refresh now (output goes to your terminal, not to docker logs)
 docker exec railway-pipeline bash /app/demo/run_pipeline.sh
 
-# One-off catch-up after missed days (does not change the daily setting)
-docker exec -e BACKFILL_DAYS=35 railway-pipeline bash /app/demo/run_pipeline.sh
+# One-off catch-up after missed days, logged to docker logs (does not change the daily setting)
+docker exec -d -e BACKFILL_DAYS=35 railway-pipeline bash -c 'bash /app/demo/run_pipeline.sh > /proc/1/fd/1 2>&1'
 
 # Rebuild after changing dashboards/models
 docker compose -f docker-compose.demo.yml up -d --build pipeline
 
-# Reload every day from the raw files into the warehouse (e.g. after upgrading)
-docker exec -w /app/dbt_warehouse railway-pipeline uv run dbt build --profiles-dir . --full-refresh
+# Reload every day from the raw files into the warehouse (e.g. after upgrading), then force a refresh.
+# It takes the pipeline lock: while a run is going it prints "Not run" at once.
+docker exec -w /app/dbt_warehouse railway-pipeline flock -n -E 75 /tmp/pipeline.lock \
+  uv run dbt build --profiles-dir . --full-refresh || echo "Not run: a pipeline run holds the lock, or it failed"
 
-# Reset all fetched data (the site is offline until the first run finishes)
+# Reset all fetched data (the old site stays up until the first run publishes the last 8 days)
 docker compose -f docker-compose.demo.yml down && docker volume rm railway_data \
   && docker compose -f docker-compose.demo.yml up -d
 ```

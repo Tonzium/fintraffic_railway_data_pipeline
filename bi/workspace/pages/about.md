@@ -60,7 +60,7 @@ every day without anyone touching it.
     <text x="580" y="226" fill="#0f2942" font-size="11">railway.tonikiuru.com</text>
   </g>
 
-  <text x="15" y="280" font-size="11" fill="#64748b">Steps 1–3 re-run daily at 07:00 EET, on Proxmox.</text>
+  <text x="15" y="280" font-size="11" fill="#64748b">The whole chain re-runs daily at 07:00 Helsinki time, on Proxmox.</text>
 </svg>
 </div>
 
@@ -69,7 +69,7 @@ every day without anyone touching it.
 
 ## Why this stack
 
-- **DuckDB** — an entire quarter of Finnish railway events fits comfortably in a single
+- **DuckDB** — a full year of Finnish railway events fits comfortably in a single
   embedded file. No cluster, no server to keep alive, and the same engine runs both the
   dbt transformations and (via DuckDB WASM) the charts in your browser.
 - **dbt** — the bronze/silver/gold layering keeps raw API payloads, cleaned facts, and

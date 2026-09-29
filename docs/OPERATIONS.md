@@ -24,8 +24,9 @@ Find the folder on the VM that the stack runs from; run every `docker compose` c
 docker inspect railway-pipeline --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}'
 ```
 
-With `COMPOSE_FILE=docker-compose.demo.yml` in `.env`, plain `docker compose ps/logs/up` use the demo
-stack. Without it, never run a plain `docker compose up` on the VM: `docker-compose.yml` in the same
+With `COMPOSE_FILE=docker-compose.demo.yml` in the server's `.env` (commented out in `.env.example`,
+because it would also redirect `docker compose` on a development machine), plain `docker compose
+ps/logs/up` use the demo stack. Without it, never run a plain `docker compose up` on the VM: `docker-compose.yml` in the same
 folder is the local development stack, and its port 3000 clashes with `railway-web`.
 
 ## How the pipeline works
@@ -114,8 +115,8 @@ The important lines from the last day:
 docker logs -t --since 24h railway-pipeline 2>&1 | grep -aE '\[scheduler\]|=== |FATAL|Killed|No space|Traceback|ERROR'
 ```
 
-What is running inside the container (the image has no `ps`). Between runs only `tini`,
-`entrypoint.sh` and `sleep` are there; `ELAPSED` like `2-03:14:05` means running for 2 days 3 hours:
+What is running inside the container (the image has no `ps`). Between runs only tini (shown as
+`/sbin/docker-init`), `entrypoint.sh` and `sleep` are there; `ELAPSED` like `2-03:14:05` means running for 2 days 3 hours:
 
 ```bash
 docker top railway-pipeline -eo pid,etime,rss,args
@@ -130,7 +131,7 @@ not to `docker logs`, so keep a copy:
 docker exec railway-pipeline bash /app/demo/run_pipeline.sh 2>&1 | tee /root/run-$(date +%F-%H%M).log
 ```
 
-It ends with a line like `=== [Tue Sep 29 18:12:07 EEST 2026] Pipeline done ===`. If it prints
+It ends with a line like `=== [Wed Sep 30 07:05:12 EEST 2026] Pipeline done ===`. If it prints
 `already in progress; skipping`, another run is going: wait for it.
 
 ### Catch up after missed days
@@ -149,11 +150,12 @@ docker logs -f railway-pipeline
 ### Reload every day from the raw files
 
 Rebuilds bronze from all files on disk, for example after an upgrade or after restoring files. Run it
-between scheduled runs (not near 07:00); it takes the pipeline lock, so it refuses to start while a
-run is going:
+between scheduled runs (not near 07:00). It takes the pipeline lock, so while a run is going it
+returns at once and prints the "Not run" message: wait for `[scheduler] Next run at` and try again.
+It takes about a minute and up to 4 GB of memory for a full year of files.
 
 ```bash
-docker exec -w /app/dbt_warehouse railway-pipeline flock -n /tmp/pipeline.lock uv run dbt build --profiles-dir . --full-refresh
+docker exec -w /app/dbt_warehouse railway-pipeline flock -n -E 75 /tmp/pipeline.lock uv run dbt build --profiles-dir . --full-refresh || echo "Not run: a pipeline run holds the lock (exit 75), or it failed"
 ```
 
 Then refresh the site (above) to publish the result.
@@ -194,7 +196,8 @@ Make changes in the repo, not by editing tracked files on the VM: local edits ma
 ### Change settings
 
 All settings are in `.env` next to the compose file (see `.env.example` and demo/README.md):
-`UPDATE_HOUR`, `BACKFILL_DAYS`, `RETENTION_DAYS`, `RUN_TIMEOUT`, `NODE_OPTIONS`, `TZ`. After editing,
+`UPDATE_HOUR`, `BACKFILL_DAYS`, `RETENTION_DAYS`, `RUN_TIMEOUT`, `NODE_OPTIONS`, `DUCKDB_MEMORY_LIMIT`,
+`DUCKDB_THREADS`, `TZ`. After editing,
 recreate the container (this starts a run):
 
 ```bash
@@ -221,9 +224,9 @@ free -m
 
 ### Start over from nothing (deletes all history)
 
-Deletes every fetched day and the warehouse, and brings the stack back up. The site is offline until the
-first run finishes. Digitraffic still serves old dates, so a catch-up with a large `BACKFILL_DAYS`
-refills history:
+Deletes every fetched day and the warehouse, and brings the stack back up. The old site stays online
+until the first run publishes a site with only the last 8 days. Digitraffic still serves old dates, so
+after `[scheduler] Next run at`, run a catch-up with a large `BACKFILL_DAYS` to refill history:
 
 ```bash
 docker compose -f docker-compose.demo.yml down && docker volume rm railway_data && docker compose -f docker-compose.demo.yml up -d
@@ -390,6 +393,10 @@ run never takes the site down; the last good version stays online.
 | `heap out of memory` or `FATAL ERROR` after `=== Evidence build ===` | Node's memory limit is too low | Raise `NODE_OPTIONS` in `.env` (e.g. `--max-old-space-size=6144`) and recreate the container |
 | `Killed` or `SIGKILL` after `=== Evidence build ===` | The VM ran out of RAM | Give the VM more memory |
 | `[scheduler] Pipeline TIMED OUT` | A step hung for `RUN_TIMEOUT` | Read the lines before it; the next run retries automatically |
+| `[scheduler] Pipeline KILLED (SIGKILL…)` | Usually out of memory: the kernel killed a step | Check `free -m` and `journalctl -k \| grep -i oom` in the VM; give the VM more memory |
+| `Pipeline FAILED` right after `=== dbt build ===`, with `Failure in test` or `ERROR` lines | A data test with error severity failed, or a model broke on new data | Read the failing test in the log, or `docker exec railway-pipeline tail -n 200 /app/dbt_warehouse/logs/dbt.log` (lost when the container is recreated). It fails every day until fixed |
+| `Could not set lock on file "…warehouse.duckdb"` | Two processes opened the warehouse at once (a manual dbt run, a DuckDB CLI) | Close the other one; use the lock-wrapped commands in this guide |
+| `Out of Memory Error` from DuckDB during `=== dbt build ===` | DuckDB hit `DUCKDB_MEMORY_LIMIT` | Raise `DUCKDB_MEMORY_LIMIT` in `.env` (default 4GB) and recreate the container |
 | `Pipeline skipped: another run holds the lock` every day | A leftover process holds the lock | `docker restart railway-pipeline` (this starts a run) |
 | A traceback right after `Fetching station metadata` | The VM cannot reach the Digitraffic API | Test from the container (below); check [status.digitraffic.fi](https://status.digitraffic.fi) |
 | Cloudflare error 1033 (HTTP 530) | The tunnel is down: VM off, Docker not running, or a full disk after a reboot | `qm status 107` on pve1, then `docker ps -a` on the VM |
@@ -400,7 +407,7 @@ Rewrites the file for that date. If the day is inside the reload window (the las
 days), the next run reloads it; for an older day, follow with "Reload every day from the raw files".
 
 ```bash
-docker exec -w /app/src railway-pipeline uv run python data_ingestion.py --start 2026-08-29 --end 2026-08-29 --compress
+docker exec -w /app/src railway-pipeline flock -n -E 75 /tmp/pipeline.lock uv run python data_ingestion.py --start 2026-08-29 --end 2026-08-29 --compress || echo "Not run: a pipeline run holds the lock (exit 75), or it failed"
 ```
 
 ### Test the API from inside the container
@@ -428,13 +435,23 @@ Then `scp root@<VM IP>:/root/railway_data-*.tgz .` from the PC, and delete the f
 This version stores raw files gzipped, reloads the fetch window, keeps one year and builds the site from
 small aggregate tables. On the VM, in the compose folder:
 
-1. `git remote -v` must show GitHub. Then `git pull`.
-2. Add `COMPOSE_FILE=docker-compose.demo.yml` to `.env` (see `.env.example` for the other new settings).
+1. `git remote -v` must show github.com/Tonzium/fintraffic_railway_data_pipeline. If it shows the school
+   GitLab: `git remote set-url origin https://github.com/Tonzium/fintraffic_railway_data_pipeline.git`.
+   `git status` must be clean. Note the current commit with `git rev-parse HEAD`, then `git pull`.
+2. Add `COMPOSE_FILE=docker-compose.demo.yml` to `.env`. The other new settings in `.env.example` all
+   have defaults.
 3. `docker compose -f docker-compose.demo.yml up -d --build`. The first run compresses the existing
-   plain files (a few minutes once; unreadable ones go to `staging/quarantine/`).
-4. After `Pipeline done`, repair the days that were stored as partial 07:00 snapshots: run "Reload every
-   day from the raw files", then "Refresh the site now".
-5. `docker image prune -f && docker builder prune -f`.
+   plain files (a few minutes, once; unreadable ones go to `staging/quarantine/`). Follow it with
+   `docker logs -f railway-pipeline` until `[scheduler] Next run at`.
+4. Repair the days that were stored as partial 07:00 snapshots: run "Reload every day from the raw
+   files", then "Refresh the site now".
+5. Check: `curl -s https://railway.tonikiuru.com/build-info.json` should show `data_from` 2026-08-05 and
+   about 57 days or more.
+6. `docker image prune -f && docker builder prune -f`.
+
+Rolling back: after step 3 the raw files are gzipped, and the old code only reads plain `.json`. Before
+running an older commit, decompress them:
+`docker run --rm -v railway_data:/d alpine sh -c 'gunzip -r /d/staging/train_departure_date'`.
 
 ## Incident log
 
