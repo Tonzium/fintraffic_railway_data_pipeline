@@ -23,6 +23,11 @@ Gold models transform cleaned silver-layer data into:
 
 1. **`gold_on_time_performance`** - Overall OTP metrics across all dimensions
 2. **`gold_ic_vs_hdm_comparison`** - Detailed IC vs HDM competitive analysis
+3. **`gold_station_performance`** - Per-station volume and OTP for the station map
+4. **Evidence page aggregates** - `gold_daily_performance`, `gold_hourly_delay_categories`,
+   `gold_delay_histogram`, `gold_train_spans`, `gold_station_presence`,
+   `gold_ic_hdm_station_daily`, `gold_ic_hdm_hourly_daily`, `gold_timetable_coverage`
+   (see `gold_page_aggregates`)
 
 ---
 
@@ -94,6 +99,16 @@ This model answers critical business questions:
 ✅ **Completed Events Only**: Exclude scheduled-but-not-yet-occurred events  
 ✅ **Non-Cancelled Trains**: Only analyze trains that actually ran  
 
+## Build Memory
+
+The commercial-event CTE is read by three aggregations (overall, per type, per category).
+DuckDB 1.4 materialises a CTE that is referenced more than once, so it is declared
+`NOT MATERIALIZED` and selects only the eight columns the aggregations use. Train counts come
+from a small train-level CTE (one row per trainNumber, departureDate, type and category) instead
+of `COUNT(DISTINCT trainNumber || '_' || departureDate)` over every event. The output is
+unchanged. At 365 days (10.4M commercial stops) the model's peak RSS fell from about 4.2 GB to
+about 0.8 GB.
+
 ## Example Query
 
 ```sql
@@ -125,6 +140,7 @@ gold_on_time_performance ← YOU ARE HERE
 ## Change Log
 
 - **2024-12-10**: Initial model creation
+- **2026-09-30**: Event CTE not materialised and projected, train counts from a train-level CTE (memory)
 - **Materialization**: Table (fast query performance)
 
 {% enddocs %}
@@ -331,5 +347,108 @@ END
 ### Usage in Models
 
 These categories are calculated in **silver_timetable_events** and aggregated in all gold models to provide consistent delay analysis across the platform.
+
+{% enddocs %}
+
+{% docs gold_page_aggregates %}
+
+## Evidence page aggregates
+
+The Evidence site (`bi/workspace`) used to load `silver_fact_timetable_events` as a source: one
+row per arrival/departure (~64,000 rows per day). `npm run sources` then needed memory that grew
+with history (about 6 GB at 30 days, out of memory at ~55 days), and the browser had to download
+every event. These eight small tables replace it. Every page query is answered exactly from them,
+and at 365 days of history each has at most a few tens of thousands of rows.
+
+| Model | Grain | Filters used by pages |
+|-------|-------|-----------------------|
+| `gold_daily_performance` | actual day x trainType x trainCategory x day_of_week x scheduled_month | date range (Train Performance) |
+| `gold_hourly_delay_categories` | scheduled_hour x trainType x trainCategory x delay_category (all time) | none |
+| `gold_delay_histogram` | trainType x integer delay_minutes (all time) | none |
+| `gold_train_spans` | departureDate x trainType x trainCategory x first/last actual day x midnight_days x has_* flags | period, date range |
+| `gold_station_presence` | trainType x trainCategory x station x run of consecutive actual days | date range |
+| `gold_ic_hdm_station_daily` | departureDate x trainType (IC/HDM) x station | period (IC vs HDM) |
+| `gold_ic_hdm_hourly_daily` | departureDate x trainType (IC/HDM) x scheduled_hour x delay_category | period (IC vs HDM) |
+| `gold_timetable_coverage` | departureDate x trainType x trainCategory, **all** events | none |
+
+All models except `gold_timetable_coverage` cover commercial stops with an actual time
+(`commercial_stop = true AND actual_time IS NOT NULL`), the filter every page query used.
+
+### Additive measures
+
+| Column | Definition |
+|--------|------------|
+| `events` | COUNT(*) |
+| `on_time_events` | stops with `delay_minutes <= 5` (`is_on_time`) |
+| `delay_sum` | SUM(delay_minutes) |
+| `delay_sumsq` | SUM(delay_minutes^2) |
+| `delay_count` | COUNT(delay_minutes) |
+
+Roll-ups that reproduce the event-level SQL:
+
+```sql
+ROUND(100.0 * SUM(on_time_events) / SUM(events), 2)          -- AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END)
+ROUND(SUM(delay_sum) / SUM(delay_count), 2)                   -- AVG(delay_minutes)
+ROUND(SQRT((SUM(delay_count) * SUM(delay_sumsq) - SUM(delay_sum) * SUM(delay_sum))
+      / NULLIF(SUM(delay_count) * (SUM(delay_count) - 1), 0)), 2)  -- STDDEV(delay_minutes)
+```
+
+`delay_minutes` is an integer, so `gold_delay_histogram` holds the full delay distribution of
+each train type: PERCENTILE_CONT/MEDIAN, MIN and MAX are exact (median = mean of the values at
+0-based positions floor((n-1)/2) and ceil((n-1)/2) of the cumulative counts). Its NULL
+`delay_minutes` row keeps the stops without a delay, so every train type is present.
+
+The two all-time tables have no date column and do not grow with the number of days:
+`gold_hourly_delay_categories` is bounded by 24 hours x type/category pairs x 6 categories, and
+`gold_delay_histogram` grows only with the spread of delay values per train type.
+
+### Distinct counts
+
+`COUNT(DISTINCT trainNumber || departureDate)` and `COUNT(DISTINCT stationShortCode)` cannot be
+summed across rows, so they get their own models:
+
+* `gold_train_spans.n_trains` can be summed over departureDate, trainType and trainCategory,
+  because a train has exactly one of each. Per time of day or weekday/weekend, use
+  `SUM(n_trains) FILTER (WHERE has_...)`: a train in both groups counts in both, as before.
+* Date range `actual_time BETWEEN '<start>' AND '<end>'` (both `YYYY-MM-DD`), for a train
+  (`gold_train_spans`) or a station run (`gold_station_presence`):
+  * `<start>` < `<end>`: it had a stop in the range when
+    `first_actual_bucket <= '<end>' AND last_actual_bucket >= '<start>'`. The range is then at
+    least 24 h long, so it cannot fall inside the gap between two buckets of one train or one
+    station run. For `gold_train_spans` this needs every train to stay within two UTC days, i.e.
+    no more than 24 h between the actual days of its commercial stops (warn test on
+    `gold_train_spans`). `gold_station_presence` needs no such condition, because its runs are
+    built to break at every gap of more than 24 h.
+  * `<start>` = `<end>`: the range is the single instant `<start> 00:00:00`, which only stops
+    stamped exactly at midnight match. The overlap test would also match every train or station
+    run whose buckets merely straddle that midnight without a stop at it, so both models carry
+    `midnight_days`, the sorted comma-separated `YYYY-MM-DD` days with such a stop (`''` when
+    none), and the filter is `contains(midnight_days, '<start>')`. This is exact.
+  * `<start>` > `<end>`: empty, as `BETWEEN` is.
+
+  The Train Performance page writes the three cases as one `CASE` in its `WHERE` clause.
+  `midnight_days` is a non-null VARCHAR on purpose: Evidence ships a timestamp column that is NULL
+  on every row as a DOUBLE, which could not be compared with a date string.
+* The page SQL joins these distinct counts to the additive measures with
+  `IS NOT DISTINCT FROM`, so a NULL trainType or trainCategory stays its own row, as it did with
+  `GROUP BY` on the events.
+
+### Actual-day buckets
+
+`actual_bucket` / `first_actual_bucket` / `last_actual_bucket` are the UTC day of `actual_time`
+stamped at 12:00. A stop recorded exactly at 00:00:00 keeps its own timestamp. With the
+`YYYY-MM-DD` strings that Evidence's DateRange input produces,
+`actual_bucket BETWEEN '<start>' AND '<end>'` selects exactly the same stops as
+`actual_time BETWEEN '<start>' AND '<end>'`: stops on days start .. end-1, plus stops at exactly
+00:00:00 on the end day.
+
+### Page SQL conventions
+
+* Count outputs (`events`, `stops`, `trains`, `total_stops`, `total_trains`) are
+  `CAST(... AS BIGINT)`. They are sums over parquet columns that Evidence stores as DOUBLE, and the
+  event-level `COUNT(*)` they replace returned BIGINT. The values are the same either way.
+* Every `ORDER BY` on a rounded measure has a tiebreaker (hour, weekday, type and category,
+  station), so tied rows, and the row a `LIMIT` picks among ties, come out the same on every build.
+  The event-level queries did not fix the order of ties.
 
 {% enddocs %}

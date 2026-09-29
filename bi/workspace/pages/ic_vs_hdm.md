@@ -10,7 +10,7 @@ SELECT
     MIN(CAST(departureDate AS DATE)) as first_day,
     MAX(CAST(departureDate AS DATE)) as last_day,
     COUNT(DISTINCT departureDate) as days_covered
-FROM warehouse.timetable_events
+FROM warehouse.timetable_coverage
 ```
 
 _Data covers **{fmt(data_period[0]?.first_day, 'longdate')} – {fmt(data_period[0]?.last_day, 'longdate')}** ({data_period[0]?.days_covered} days). All numbers on this page follow the time period selected below._
@@ -24,19 +24,36 @@ _Data covers **{fmt(data_period[0]?.first_day, 'longdate')} – {fmt(data_period
 </Dropdown>
 
 ```sql metrics_filtered
+WITH stops AS (
+    SELECT
+        trainType,
+        SUM(events) as events,
+        SUM(on_time_events) as on_time_events,
+        SUM(delay_sum) as delay_sum,
+        SUM(delay_count) as delay_count,
+        COUNT(DISTINCT stationShortCode) as stations
+    FROM warehouse.ic_hdm_station_daily
+    WHERE CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_coverage) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
+    GROUP BY trainType
+),
+trains AS (
+    SELECT
+        trainType,
+        SUM(n_trains) as trains
+    FROM warehouse.train_spans
+    WHERE trainType IN ('IC', 'HDM')
+        AND CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_coverage) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
+    GROUP BY trainType
+)
 SELECT
-    trainType as train_type,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as on_time_percentage,
-    ROUND(AVG(delay_minutes), 2) as avg_delay_minutes,
-    COUNT(DISTINCT trainNumber || '_' || departureDate) as total_trains,
-    COUNT(*) as total_stops,
-    COUNT(DISTINCT stationShortCode) as stations_served
-FROM warehouse.timetable_events
-WHERE trainType IN ('IC', 'HDM')
-    AND actual_time IS NOT NULL
-    AND commercial_stop = true
-    AND CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_events) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
-GROUP BY trainType
+    s.trainType as train_type,
+    ROUND(100.0 * s.on_time_events / s.events, 2) as on_time_percentage,
+    ROUND(s.delay_sum / s.delay_count, 2) as avg_delay_minutes,
+    CAST(t.trains AS BIGINT) as total_trains,
+    CAST(s.events AS BIGINT) as total_stops,
+    s.stations as stations_served
+FROM stops s
+LEFT JOIN trains t ON t.trainType = s.trainType
 ```
 
 ```sql hdm_metrics
@@ -51,7 +68,7 @@ WHERE train_type = 'IC'
 
 ```sql comparison_summary
 SELECT * FROM ${metrics_filtered}
-ORDER BY on_time_percentage DESC
+ORDER BY on_time_percentage DESC, train_type
 ```
 
 ## 🏆 Performance Winner
@@ -154,13 +171,10 @@ ORDER BY on_time_percentage DESC
 SELECT
     trainType as train_type,
     delay_category,
-    COUNT(*) as events,
-    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY trainType), 2) as percentage
-FROM warehouse.timetable_events
-WHERE trainType IN ('IC', 'HDM')
-    AND actual_time IS NOT NULL
-    AND commercial_stop = true
-    AND CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_events) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
+    CAST(SUM(events) AS BIGINT) as events,
+    ROUND(100.0 * SUM(events) / SUM(SUM(events)) OVER (PARTITION BY trainType), 2) as percentage
+FROM warehouse.ic_hdm_hourly_daily
+WHERE CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_coverage) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
 GROUP BY trainType, delay_category
 ORDER BY trainType,
     CASE delay_category
@@ -201,14 +215,11 @@ ORDER BY trainType,
 SELECT
     scheduled_hour,
     trainType as train_type,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(delay_minutes), 2) as avg_delay,
-    COUNT(*) as events
-FROM warehouse.timetable_events
-WHERE trainType IN ('IC', 'HDM')
-    AND actual_time IS NOT NULL
-    AND commercial_stop = true
-    AND CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_events) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
+    ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay,
+    CAST(SUM(events) AS BIGINT) as events
+FROM warehouse.ic_hdm_hourly_daily
+WHERE CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_coverage) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
 GROUP BY scheduled_hour, trainType
 ORDER BY scheduled_hour, trainType
 ```
@@ -296,18 +307,16 @@ FROM ${metrics_filtered}
 SELECT
     s.stationName,
     s.stationShortCode,
-    COUNT(*) as stops,
-    ROUND(AVG(CASE WHEN f.is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(f.delay_minutes), 2) as avg_delay
-FROM warehouse.timetable_events f
+    CAST(SUM(f.events) AS BIGINT) as stops,
+    ROUND(100.0 * SUM(f.on_time_events) / SUM(f.events), 2) as otp_percentage,
+    ROUND(SUM(f.delay_sum) / SUM(f.delay_count), 2) as avg_delay
+FROM warehouse.ic_hdm_station_daily f
 JOIN warehouse.dim_stations s
     ON f.stationShortCode = s.stationShortCode
 WHERE f.trainType = 'HDM'
-    AND f.actual_time IS NOT NULL
-    AND f.commercial_stop = true
 GROUP BY s.stationName, s.stationShortCode
-HAVING COUNT(*) >= 100
-ORDER BY otp_percentage DESC
+HAVING SUM(f.events) >= 100
+ORDER BY otp_percentage DESC, s.stationShortCode
 LIMIT 10
 ```
 
@@ -325,18 +334,16 @@ LIMIT 10
 SELECT
     s.stationName,
     s.stationShortCode,
-    COUNT(*) as stops,
-    ROUND(AVG(CASE WHEN f.is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(f.delay_minutes), 2) as avg_delay
-FROM warehouse.timetable_events f
+    CAST(SUM(f.events) AS BIGINT) as stops,
+    ROUND(100.0 * SUM(f.on_time_events) / SUM(f.events), 2) as otp_percentage,
+    ROUND(SUM(f.delay_sum) / SUM(f.delay_count), 2) as avg_delay
+FROM warehouse.ic_hdm_station_daily f
 JOIN warehouse.dim_stations s
     ON f.stationShortCode = s.stationShortCode
 WHERE f.trainType = 'IC'
-    AND f.actual_time IS NOT NULL
-    AND f.commercial_stop = true
 GROUP BY s.stationName, s.stationShortCode
-HAVING COUNT(*) >= 100
-ORDER BY otp_percentage DESC
+HAVING SUM(f.events) >= 100
+ORDER BY otp_percentage DESC, s.stationShortCode
 LIMIT 10
 ```
 

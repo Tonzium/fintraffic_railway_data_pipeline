@@ -10,13 +10,12 @@ sidebar_position: 4
 ```sql hourly_pattern
 SELECT
     scheduled_hour,
-    COUNT(*) as events,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(delay_minutes), 2) as avg_delay,
-    ROUND(STDDEV(delay_minutes), 2) as delay_stddev
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    CAST(SUM(events) AS BIGINT) as events,
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
+    ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay,
+    -- sample standard deviation from the exact sums (same as STDDEV(delay_minutes))
+    ROUND(SQRT((SUM(delay_count) * SUM(delay_sumsq) - SUM(delay_sum) * SUM(delay_sum)) / NULLIF(SUM(delay_count) * (SUM(delay_count) - 1), 0)), 2) as delay_stddev
+FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
 ORDER BY scheduled_hour
 ```
@@ -51,18 +50,34 @@ ORDER BY scheduled_hour
 ## Peak Hour Analysis
 
 ```sql rush_hour_performance
+WITH stops AS (
+    SELECT
+        time_of_day_category,
+        SUM(events) as events,
+        SUM(on_time_events) as on_time_events,
+        SUM(delay_sum) as delay_sum,
+        SUM(delay_count) as delay_count
+    FROM warehouse.hourly_delay_categories
+    GROUP BY time_of_day_category
+),
+-- a train with stops in several periods counts in each of them
+trains AS (
+    SELECT 'morning_rush' as time_of_day_category, SUM(n_trains) FILTER (WHERE has_morning_rush) as trains FROM warehouse.train_spans
+    UNION ALL
+    SELECT 'off_peak', SUM(n_trains) FILTER (WHERE has_off_peak) FROM warehouse.train_spans
+    UNION ALL
+    SELECT 'evening_rush', SUM(n_trains) FILTER (WHERE has_evening_rush) FROM warehouse.train_spans
+)
 SELECT
-    time_of_day_category,
-    COUNT(*) as events,
-    COUNT(DISTINCT trainNumber || departureDate) as trains,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(delay_minutes), 2) as avg_delay
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
-GROUP BY time_of_day_category
+    s.time_of_day_category,
+    CAST(s.events AS BIGINT) as events,
+    CAST(t.trains AS BIGINT) as trains,
+    ROUND(100.0 * s.on_time_events / s.events, 2) as otp_percentage,
+    ROUND(s.delay_sum / s.delay_count, 2) as avg_delay
+FROM stops s
+LEFT JOIN trains t ON t.time_of_day_category = s.time_of_day_category
 ORDER BY
-    CASE time_of_day_category
+    CASE s.time_of_day_category
         WHEN 'morning_rush' THEN 1
         WHEN 'off_peak' THEN 2
         WHEN 'evening_rush' THEN 3
@@ -110,12 +125,10 @@ SELECT
         WHEN 5 THEN 'Friday'
         WHEN 6 THEN 'Saturday'
     END as day_name,
-    COUNT(*) as events,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(delay_minutes), 2) as avg_delay
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    CAST(SUM(events) AS BIGINT) as events,
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
+    ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay
+FROM warehouse.daily_performance
 GROUP BY day_of_week
 ORDER BY day_of_week
 ```
@@ -151,14 +164,12 @@ ORDER BY day_of_week
 SELECT
     is_weekend,
     trainCategory as category,
-    COUNT(*) as events,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(delay_minutes), 2) as avg_delay
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    CAST(SUM(events) AS BIGINT) as events,
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
+    ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay
+FROM warehouse.daily_performance
 GROUP BY is_weekend, trainCategory
-ORDER BY is_weekend, otp_percentage DESC
+ORDER BY is_weekend, otp_percentage DESC, category
 ```
 
 <BarChart
@@ -177,25 +188,38 @@ ORDER BY is_weekend, otp_percentage DESC
 />
 
 ```sql weekend_summary
+WITH stops AS (
+    SELECT
+        is_weekend,
+        SUM(events) as events,
+        SUM(on_time_events) as on_time_events,
+        SUM(delay_sum) as delay_sum,
+        SUM(delay_count) as delay_count
+    FROM warehouse.daily_performance
+    GROUP BY is_weekend
+),
+-- a train with stops on both sides of the weekend boundary counts in both
+trains AS (
+    SELECT false as is_weekend, SUM(n_trains) FILTER (WHERE has_weekday) as trains FROM warehouse.train_spans
+    UNION ALL
+    SELECT true, SUM(n_trains) FILTER (WHERE has_weekend) FROM warehouse.train_spans
+)
 SELECT
-    CASE WHEN is_weekend THEN 'Weekend' ELSE 'Weekday' END as period,
-    COUNT(*) as events,
-    COUNT(DISTINCT trainNumber || departureDate) as trains,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(delay_minutes), 2) as avg_delay
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
-GROUP BY is_weekend
-ORDER BY is_weekend
+    CASE WHEN s.is_weekend THEN 'Weekend' ELSE 'Weekday' END as period,
+    CAST(s.events AS BIGINT) as events,
+    CAST(t.trains AS BIGINT) as trains,
+    ROUND(100.0 * s.on_time_events / s.events, 2) as otp_percentage,
+    ROUND(s.delay_sum / s.delay_count, 2) as avg_delay
+FROM stops s
+LEFT JOIN trains t ON t.is_weekend = s.is_weekend
+ORDER BY s.is_weekend
 ```
 
 ```sql weekend_pivot
 SELECT
-    ROUND(SUM(CASE WHEN is_weekend = false AND is_on_time THEN 1.0 ELSE 0.0 END) / COUNT(CASE WHEN is_weekend = false THEN 1 END) * 100, 2) as weekday_otp,
-    ROUND(SUM(CASE WHEN is_weekend = true AND is_on_time THEN 1.0 ELSE 0.0 END) / COUNT(CASE WHEN is_weekend = true THEN 1 END) * 100, 2) as weekend_otp
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL AND commercial_stop = true
+    ROUND(SUM(CASE WHEN is_weekend = false THEN on_time_events ELSE 0 END) / SUM(CASE WHEN is_weekend = false THEN events ELSE 0 END) * 100, 2) as weekday_otp,
+    ROUND(SUM(CASE WHEN is_weekend = true THEN on_time_events ELSE 0 END) / SUM(CASE WHEN is_weekend = true THEN events ELSE 0 END) * 100, 2) as weekend_otp
+FROM warehouse.daily_performance
 ```
 
 <Grid cols=2>
@@ -238,12 +262,10 @@ SELECT
         WHEN 11 THEN 'November'
         WHEN 12 THEN 'December'
     END as month_name,
-    COUNT(*) as events,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    ROUND(AVG(delay_minutes), 2) as avg_delay
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    CAST(SUM(events) AS BIGINT) as events,
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
+    ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay
+FROM warehouse.daily_performance
 GROUP BY scheduled_month
 ORDER BY scheduled_month
 ```
@@ -269,11 +291,9 @@ ORDER BY scheduled_month
 SELECT
     scheduled_hour,
     trainType as train_type,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
-    AND trainType IN ('IC', 'HDM', 'S', 'P', 'HL', 'T', 'SAA', 'VET')
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage
+FROM warehouse.hourly_delay_categories
+WHERE trainType IN ('IC', 'HDM', 'S', 'P', 'HL', 'T', 'SAA', 'VET')
 GROUP BY scheduled_hour, trainType
 ORDER BY scheduled_hour, trainType
 ```
@@ -302,26 +322,22 @@ ORDER BY scheduled_hour, trainType
 ```sql best_worst_hours
 SELECT
     scheduled_hour,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    COUNT(*) as events
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
+    CAST(SUM(events) AS BIGINT) as events
+FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, scheduled_hour
 LIMIT 1
 ```
 
 ```sql worst_hour
 SELECT
     scheduled_hour,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    COUNT(*) as events
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
+    CAST(SUM(events) AS BIGINT) as events
+FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
-ORDER BY otp_percentage ASC
+ORDER BY otp_percentage ASC, scheduled_hour
 LIMIT 1
 ```
 
@@ -349,10 +365,8 @@ WITH daily_stats AS (
             WHEN 5 THEN 'Friday'
             WHEN 6 THEN 'Saturday'
         END as day_name,
-        ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage
-    FROM warehouse.timetable_events
-    WHERE actual_time IS NOT NULL
-        AND commercial_stop = true
+        ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage
+    FROM warehouse.daily_performance
     GROUP BY day_of_week
 )
 SELECT
@@ -364,7 +378,7 @@ SELECT
     END as performance
 FROM daily_stats
 WHERE day_name IS NOT NULL
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, day_of_week
 ```
 
 <Grid cols=2>
@@ -384,11 +398,9 @@ ORDER BY otp_percentage DESC
 SELECT
     scheduled_hour,
     delay_category,
-    COUNT(*) as events,
-    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY scheduled_hour), 2) as percentage
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    CAST(SUM(events) AS BIGINT) as events,
+    ROUND(100.0 * SUM(events) / SUM(SUM(events)) OVER (PARTITION BY scheduled_hour), 2) as percentage
+FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour, delay_category
 ORDER BY scheduled_hour,
     CASE delay_category
