@@ -9,7 +9,7 @@
 ) }}
 
 -- Memory: DuckDB 1.4 materialises a CTE that is referenced more than once. The
--- event CTE below is read three times, so it is NOT MATERIALIZED and projects only
+-- event CTE below is read four times, so it is NOT MATERIALIZED and projects only
 -- the columns used; otherwise every column of every commercial event is buffered
 -- (about 4.2 GB RSS at 365 days). Train counts come from a small train-level CTE
 -- instead of COUNT(DISTINCT trainNumber || '_' || departureDate) over every event.

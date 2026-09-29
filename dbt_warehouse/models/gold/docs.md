@@ -420,7 +420,8 @@ summed across rows, so they get their own models:
     `gold_train_spans`). `gold_station_presence` needs no such condition, because its runs are
     built to break at every gap of more than 24 h.
   * `<start>` = `<end>`: the range is the single instant `<start> 00:00:00`, which only stops
-    stamped exactly at midnight match. The overlap test cannot see those, so both models carry
+    stamped exactly at midnight match. The overlap test would also match every train or station
+    run whose buckets merely straddle that midnight without a stop at it, so both models carry
     `midnight_days`, the sorted comma-separated `YYYY-MM-DD` days with such a stop (`''` when
     none), and the filter is `contains(midnight_days, '<start>')`. This is exact.
   * `<start>` > `<end>`: empty, as `BETWEEN` is.
