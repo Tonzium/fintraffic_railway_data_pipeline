@@ -83,8 +83,9 @@ every day without anyone touching it.
 
 Source data comes from [Fintraffic's Digitraffic API](https://www.digitraffic.fi/en/railway-traffic/),
 covering VR train timetables, realized times, and station metadata across Finland. The
-public demo backfills 90 days on first deploy, then adds a new day automatically every
-morning at 07:00 EET.
+public demo has collected data since 5 August 2026. Every morning at 07:00 (Helsinki time)
+it fetches the latest day and re-fetches the previous seven, so late realized times are
+filled in. History is kept for up to one year; older days are removed automatically.
 
 ## Source
 
