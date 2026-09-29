@@ -70,8 +70,8 @@ stations AS (
 SELECT
     s.trainType as train_type,
     s.trainCategory as category,
-    t.trains,
-    s.events as total_stops,
+    CAST(t.trains AS BIGINT) as trains,
+    CAST(s.events AS BIGINT) as total_stops,
     ROUND(100.0 * s.on_time_events / s.events, 2) as otp_percentage,
     ROUND(s.delay_sum / s.delay_count, 2) as avg_delay,
     ROUND(SQRT((s.delay_count * s.delay_sumsq - s.delay_sum * s.delay_sum) / NULLIF(s.delay_count * (s.delay_count - 1), 0)), 2) as delay_stddev,
@@ -81,7 +81,7 @@ FROM stops s
 JOIN trains t ON t.trainType IS NOT DISTINCT FROM s.trainType AND t.trainCategory IS NOT DISTINCT FROM s.trainCategory
 LEFT JOIN stations st ON st.trainType IS NOT DISTINCT FROM s.trainType AND st.trainCategory IS NOT DISTINCT FROM s.trainCategory
 WHERE t.trains >= 50
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, train_type, category
 ```
 
 <BarChart
@@ -137,13 +137,13 @@ trains AS (
 SELECT
     s.trainCategory as category,
     s.train_types,
-    t.trains,
-    s.events as stops,
+    CAST(t.trains AS BIGINT) as trains,
+    CAST(s.events AS BIGINT) as stops,
     ROUND(100.0 * s.on_time_events / s.events, 2) as otp_percentage,
     ROUND(s.delay_sum / s.delay_count, 2) as avg_delay
 FROM stops s
 LEFT JOIN trains t ON t.trainCategory IS NOT DISTINCT FROM s.trainCategory
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, category
 ```
 
 <DataTable data={category_performance}>
@@ -163,7 +163,7 @@ ORDER BY otp_percentage DESC
 SELECT
     trainType as train_type,
     delay_category,
-    SUM(events) as events,
+    CAST(SUM(events) AS BIGINT) as events,
     ROUND(100.0 * SUM(events) / SUM(SUM(events)) OVER (PARTITION BY trainType), 2) as percentage
 FROM warehouse.hourly_delay_categories
 WHERE trainType IN (
@@ -225,13 +225,13 @@ trains AS (
 SELECT
     s.trainType as train_type,
     s.trainCategory as category,
-    t.trains,
+    CAST(t.trains AS BIGINT) as trains,
     ROUND(100.0 * s.on_time_events / s.events, 2) as otp_percentage,
     ROUND(s.delay_sum / s.delay_count, 2) as avg_delay
 FROM stops s
 JOIN trains t ON t.trainType IS NOT DISTINCT FROM s.trainType AND t.trainCategory IS NOT DISTINCT FROM s.trainCategory
 WHERE t.trains >= 50
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, train_type, category
 LIMIT 5
 ```
 
@@ -291,7 +291,7 @@ trains AS (
 )
 SELECT
     s.trainType as train_type,
-    t.trains,
+    CAST(t.trains AS BIGINT) as trains,
     ROUND(s.delay_sum / s.delay_count, 2) as avg_delay,
     ROUND(SQRT((s.delay_count * s.delay_sumsq - s.delay_sum * s.delay_sum) / NULLIF(s.delay_count * (s.delay_count - 1), 0)), 2) as delay_stddev,
     ROUND(s.min_delay, 2) as min_delay,
@@ -301,7 +301,7 @@ FROM stats s
 JOIN trains t ON t.trainType IS NOT DISTINCT FROM s.trainType
 LEFT JOIN median m ON m.trainType IS NOT DISTINCT FROM s.trainType
 WHERE t.trains >= 50
-ORDER BY delay_stddev ASC
+ORDER BY delay_stddev ASC, train_type
 ```
 
 <ScatterPlot
@@ -356,13 +356,13 @@ trains AS (
 )
 SELECT
     s.category_group,
-    t.trains,
-    s.events as stops,
+    CAST(t.trains AS BIGINT) as trains,
+    CAST(s.events AS BIGINT) as stops,
     ROUND(100.0 * s.on_time_events / s.events, 2) as otp_percentage,
     ROUND(s.delay_sum / s.delay_count, 2) as avg_delay
 FROM stops s
 LEFT JOIN trains t ON t.category_group = s.category_group
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, s.category_group
 ```
 
 ```sql category_pivot
@@ -401,7 +401,7 @@ FROM ${category_comparison}
 SELECT
     trainType as train_type,
     is_weekend,
-    SUM(events) as stops,
+    CAST(SUM(events) AS BIGINT) as stops,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
     ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay
 FROM warehouse.daily_performance

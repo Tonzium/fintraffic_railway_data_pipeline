@@ -45,7 +45,7 @@ SELECT
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage
 FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
-ORDER BY otp_percentage ASC
+ORDER BY otp_percentage ASC, scheduled_hour
 LIMIT 1
 ```
 
@@ -158,7 +158,7 @@ ORDER BY on_time_percentage DESC
 SELECT
     scheduled_hour,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
-    SUM(events) as events
+    CAST(SUM(events) AS BIGINT) as events
 FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
 ORDER BY scheduled_hour

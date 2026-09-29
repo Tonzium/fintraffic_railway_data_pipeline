@@ -99,6 +99,16 @@ This model answers critical business questions:
 ✅ **Completed Events Only**: Exclude scheduled-but-not-yet-occurred events  
 ✅ **Non-Cancelled Trains**: Only analyze trains that actually ran  
 
+## Build Memory
+
+The commercial-event CTE is read by three aggregations (overall, per type, per category).
+DuckDB 1.4 materialises a CTE that is referenced more than once, so it is declared
+`NOT MATERIALIZED` and selects only the eight columns the aggregations use. Train counts come
+from a small train-level CTE (one row per trainNumber, departureDate, type and category) instead
+of `COUNT(DISTINCT trainNumber || '_' || departureDate)` over every event. The output is
+unchanged. At 365 days (10.4M commercial stops) the model's peak RSS fell from about 4.2 GB to
+about 0.8 GB.
+
 ## Example Query
 
 ```sql
@@ -130,6 +140,7 @@ gold_on_time_performance ← YOU ARE HERE
 ## Change Log
 
 - **2024-12-10**: Initial model creation
+- **2026-09-30**: Event CTE not materialised and projected, train counts from a train-level CTE (memory)
 - **Materialization**: Table (fast query performance)
 
 {% enddocs %}
@@ -424,5 +435,14 @@ stamped at 12:00. A stop recorded exactly at 00:00:00 keeps its own timestamp. W
 `actual_bucket BETWEEN '<start>' AND '<end>'` selects exactly the same stops as
 `actual_time BETWEEN '<start>' AND '<end>'`: stops on days start .. end-1, plus stops at exactly
 00:00:00 on the end day.
+
+### Page SQL conventions
+
+* Count outputs (`events`, `stops`, `trains`, `total_stops`, `total_trains`) are
+  `CAST(... AS BIGINT)`. They are sums over parquet columns that Evidence stores as DOUBLE, and the
+  event-level `COUNT(*)` they replace returned BIGINT. The values are the same either way.
+* Every `ORDER BY` on a rounded measure has a tiebreaker (hour, weekday, type and category,
+  station), so tied rows, and the row a `LIMIT` picks among ties, come out the same on every build.
+  The event-level queries did not fix the order of ties.
 
 {% enddocs %}

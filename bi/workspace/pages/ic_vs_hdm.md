@@ -49,8 +49,8 @@ SELECT
     s.trainType as train_type,
     ROUND(100.0 * s.on_time_events / s.events, 2) as on_time_percentage,
     ROUND(s.delay_sum / s.delay_count, 2) as avg_delay_minutes,
-    t.trains as total_trains,
-    s.events as total_stops,
+    CAST(t.trains AS BIGINT) as total_trains,
+    CAST(s.events AS BIGINT) as total_stops,
     s.stations as stations_served
 FROM stops s
 LEFT JOIN trains t ON t.trainType = s.trainType
@@ -68,7 +68,7 @@ WHERE train_type = 'IC'
 
 ```sql comparison_summary
 SELECT * FROM ${metrics_filtered}
-ORDER BY on_time_percentage DESC
+ORDER BY on_time_percentage DESC, train_type
 ```
 
 ## 🏆 Performance Winner
@@ -171,7 +171,7 @@ ORDER BY on_time_percentage DESC
 SELECT
     trainType as train_type,
     delay_category,
-    SUM(events) as events,
+    CAST(SUM(events) AS BIGINT) as events,
     ROUND(100.0 * SUM(events) / SUM(SUM(events)) OVER (PARTITION BY trainType), 2) as percentage
 FROM warehouse.ic_hdm_hourly_daily
 WHERE CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_coverage) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
@@ -217,7 +217,7 @@ SELECT
     trainType as train_type,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
     ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay,
-    SUM(events) as events
+    CAST(SUM(events) AS BIGINT) as events
 FROM warehouse.ic_hdm_hourly_daily
 WHERE CAST(departureDate AS DATE) > (SELECT MAX(CAST(departureDate AS DATE)) FROM warehouse.timetable_coverage) - CAST('${inputs.period.value}' AS INTEGER) * INTERVAL '1 day'
 GROUP BY scheduled_hour, trainType
@@ -307,7 +307,7 @@ FROM ${metrics_filtered}
 SELECT
     s.stationName,
     s.stationShortCode,
-    SUM(f.events) as stops,
+    CAST(SUM(f.events) AS BIGINT) as stops,
     ROUND(100.0 * SUM(f.on_time_events) / SUM(f.events), 2) as otp_percentage,
     ROUND(SUM(f.delay_sum) / SUM(f.delay_count), 2) as avg_delay
 FROM warehouse.ic_hdm_station_daily f
@@ -316,7 +316,7 @@ JOIN warehouse.dim_stations s
 WHERE f.trainType = 'HDM'
 GROUP BY s.stationName, s.stationShortCode
 HAVING SUM(f.events) >= 100
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, s.stationShortCode
 LIMIT 10
 ```
 
@@ -334,7 +334,7 @@ LIMIT 10
 SELECT
     s.stationName,
     s.stationShortCode,
-    SUM(f.events) as stops,
+    CAST(SUM(f.events) AS BIGINT) as stops,
     ROUND(100.0 * SUM(f.on_time_events) / SUM(f.events), 2) as otp_percentage,
     ROUND(SUM(f.delay_sum) / SUM(f.delay_count), 2) as avg_delay
 FROM warehouse.ic_hdm_station_daily f
@@ -343,7 +343,7 @@ JOIN warehouse.dim_stations s
 WHERE f.trainType = 'IC'
 GROUP BY s.stationName, s.stationShortCode
 HAVING SUM(f.events) >= 100
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, s.stationShortCode
 LIMIT 10
 ```
 

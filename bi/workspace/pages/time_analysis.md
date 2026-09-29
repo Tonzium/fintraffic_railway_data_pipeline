@@ -10,7 +10,7 @@ sidebar_position: 4
 ```sql hourly_pattern
 SELECT
     scheduled_hour,
-    SUM(events) as events,
+    CAST(SUM(events) AS BIGINT) as events,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
     ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay,
     -- sample standard deviation from the exact sums (same as STDDEV(delay_minutes))
@@ -70,8 +70,8 @@ trains AS (
 )
 SELECT
     s.time_of_day_category,
-    s.events,
-    t.trains,
+    CAST(s.events AS BIGINT) as events,
+    CAST(t.trains AS BIGINT) as trains,
     ROUND(100.0 * s.on_time_events / s.events, 2) as otp_percentage,
     ROUND(s.delay_sum / s.delay_count, 2) as avg_delay
 FROM stops s
@@ -125,7 +125,7 @@ SELECT
         WHEN 5 THEN 'Friday'
         WHEN 6 THEN 'Saturday'
     END as day_name,
-    SUM(events) as events,
+    CAST(SUM(events) AS BIGINT) as events,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
     ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay
 FROM warehouse.daily_performance
@@ -164,12 +164,12 @@ ORDER BY day_of_week
 SELECT
     is_weekend,
     trainCategory as category,
-    SUM(events) as events,
+    CAST(SUM(events) AS BIGINT) as events,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
     ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay
 FROM warehouse.daily_performance
 GROUP BY is_weekend, trainCategory
-ORDER BY is_weekend, otp_percentage DESC
+ORDER BY is_weekend, otp_percentage DESC, category
 ```
 
 <BarChart
@@ -206,8 +206,8 @@ trains AS (
 )
 SELECT
     CASE WHEN s.is_weekend THEN 'Weekend' ELSE 'Weekday' END as period,
-    s.events,
-    t.trains,
+    CAST(s.events AS BIGINT) as events,
+    CAST(t.trains AS BIGINT) as trains,
     ROUND(100.0 * s.on_time_events / s.events, 2) as otp_percentage,
     ROUND(s.delay_sum / s.delay_count, 2) as avg_delay
 FROM stops s
@@ -262,7 +262,7 @@ SELECT
         WHEN 11 THEN 'November'
         WHEN 12 THEN 'December'
     END as month_name,
-    SUM(events) as events,
+    CAST(SUM(events) AS BIGINT) as events,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
     ROUND(SUM(delay_sum) / SUM(delay_count), 2) as avg_delay
 FROM warehouse.daily_performance
@@ -323,10 +323,10 @@ ORDER BY scheduled_hour, trainType
 SELECT
     scheduled_hour,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
-    SUM(events) as events
+    CAST(SUM(events) AS BIGINT) as events
 FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, scheduled_hour
 LIMIT 1
 ```
 
@@ -334,10 +334,10 @@ LIMIT 1
 SELECT
     scheduled_hour,
     ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
-    SUM(events) as events
+    CAST(SUM(events) AS BIGINT) as events
 FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
-ORDER BY otp_percentage ASC
+ORDER BY otp_percentage ASC, scheduled_hour
 LIMIT 1
 ```
 
@@ -378,7 +378,7 @@ SELECT
     END as performance
 FROM daily_stats
 WHERE day_name IS NOT NULL
-ORDER BY otp_percentage DESC
+ORDER BY otp_percentage DESC, day_of_week
 ```
 
 <Grid cols=2>
@@ -398,7 +398,7 @@ ORDER BY otp_percentage DESC
 SELECT
     scheduled_hour,
     delay_category,
-    SUM(events) as events,
+    CAST(SUM(events) AS BIGINT) as events,
     ROUND(100.0 * SUM(events) / SUM(SUM(events)) OVER (PARTITION BY scheduled_hour), 2) as percentage
 FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour, delay_category

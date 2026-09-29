@@ -29,7 +29,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['IC', 'HDM']
+              arguments:
+                values: ['IC', 'HDM']
 
       - name: on_time_percentage
         description: "Overall OTP for this train type"
@@ -85,9 +86,11 @@ models:
       scheduled_month (is_weekend follows day_of_week). {{ doc("gold_page_aggregates") }}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: ['actual_bucket', 'trainType', 'trainCategory', 'day_of_week', 'scheduled_month']
+          arguments:
+            combination_of_columns: ['actual_bucket', 'trainType', 'trainCategory', 'day_of_week', 'scheduled_month']
       - dbt_utils.expression_is_true:
-          expression: "on_time_events <= events AND delay_count <= events"
+          arguments:
+            expression: "on_time_events <= events AND delay_count <= events"
     columns:
       - name: actual_bucket
         description: "UTC day of actual_time stamped at 12:00; stops recorded exactly at 00:00:00 keep that timestamp"
@@ -129,9 +132,11 @@ models:
       delay_category (time_of_day_category follows scheduled_hour). {{ doc("gold_page_aggregates") }}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: ['scheduled_hour', 'trainType', 'trainCategory', 'delay_category']
+          arguments:
+            combination_of_columns: ['scheduled_hour', 'trainType', 'trainCategory', 'delay_category']
       - dbt_utils.expression_is_true:
-          expression: "on_time_events <= events AND delay_count <= events"
+          arguments:
+            expression: "on_time_events <= events AND delay_count <= events"
     columns:
       - name: scheduled_hour
         tests:
@@ -140,7 +145,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['morning_rush', 'off_peak', 'evening_rush']
+              arguments:
+                values: ['morning_rush', 'off_peak', 'evening_rush']
       - name: trainType
         tests:
           - not_null:
@@ -155,7 +161,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['early', 'on_time', 'slightly_late', 'late', 'very_late', 'unknown']
+              arguments:
+                values: ['early', 'on_time', 'slightly_late', 'late', 'very_late', 'unknown']
       - name: events
         tests:
           - not_null
@@ -167,9 +174,11 @@ models:
       {{ doc("gold_page_aggregates") }}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: ['trainType', 'delay_minutes']
+          arguments:
+            combination_of_columns: ['trainType', 'delay_minutes']
       - dbt_utils.expression_is_true:
-          expression: "delay_count = CASE WHEN delay_minutes IS NULL THEN 0 ELSE events END"
+          arguments:
+            expression: "delay_count = CASE WHEN delay_minutes IS NULL THEN 0 ELSE events END"
     columns:
       - name: trainType
         tests:
@@ -186,14 +195,17 @@ models:
       first/last actual day x time-of-day and weekday/weekend flags. {{ doc("gold_page_aggregates") }}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: ['departureDate', 'trainType', 'trainCategory', 'first_actual_bucket', 'last_actual_bucket',
-                                   'has_morning_rush', 'has_off_peak', 'has_evening_rush', 'has_weekday', 'has_weekend']
+          arguments:
+            combination_of_columns: ['departureDate', 'trainType', 'trainCategory', 'first_actual_bucket', 'last_actual_bucket',
+                                     'has_morning_rush', 'has_off_peak', 'has_evening_rush', 'has_weekday', 'has_weekend']
       - dbt_utils.expression_is_true:
-          expression: "first_actual_bucket <= last_actual_bucket AND n_trains >= 1"
+          arguments:
+            expression: "first_actual_bucket <= last_actual_bucket AND n_trains >= 1"
       # Range filters on first/last_actual_bucket are exact while no train has more than 24 h
       # between the actual days of its stops; a train that stays within two UTC days satisfies that.
       - dbt_utils.expression_is_true:
-          expression: "date_diff('day', first_actual_bucket, last_actual_bucket) <= 1"
+          arguments:
+            expression: "date_diff('day', first_actual_bucket, last_actual_bucket) <= 1"
           config:
             severity: warn
     columns:
@@ -226,9 +238,11 @@ models:
       station; exact "stations served" for any date range. {{ doc("gold_page_aggregates") }}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: ['trainType', 'trainCategory', 'stationShortCode', 'first_actual_bucket']
+          arguments:
+            combination_of_columns: ['trainType', 'trainCategory', 'stationShortCode', 'first_actual_bucket']
       - dbt_utils.expression_is_true:
-          expression: "first_actual_bucket <= last_actual_bucket"
+          arguments:
+            expression: "first_actual_bucket <= last_actual_bucket"
     columns:
       - name: trainType
         tests:
@@ -253,7 +267,8 @@ models:
       {{ doc("gold_page_aggregates") }}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: ['departureDate', 'trainType', 'stationShortCode']
+          arguments:
+            combination_of_columns: ['departureDate', 'trainType', 'stationShortCode']
     columns:
       - name: departureDate
         tests:
@@ -262,7 +277,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['IC', 'HDM']
+              arguments:
+                values: ['IC', 'HDM']
       - name: stationShortCode
         tests:
           - not_null
@@ -273,7 +289,8 @@ models:
       delay_category. {{ doc("gold_page_aggregates") }}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: ['departureDate', 'trainType', 'scheduled_hour', 'delay_category']
+          arguments:
+            combination_of_columns: ['departureDate', 'trainType', 'scheduled_hour', 'delay_category']
     columns:
       - name: departureDate
         tests:
@@ -282,12 +299,14 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['IC', 'HDM']
+              arguments:
+                values: ['IC', 'HDM']
       - name: delay_category
         tests:
           - not_null
           - accepted_values:
-              values: ['early', 'on_time', 'slightly_late', 'late', 'very_late', 'unknown']
+              arguments:
+                values: ['early', 'on_time', 'slightly_late', 'late', 'very_late', 'unknown']
 
   - name: gold_timetable_coverage
     description: >
@@ -296,7 +315,8 @@ models:
       {{ doc("gold_page_aggregates") }}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: ['departureDate', 'trainType', 'trainCategory']
+          arguments:
+            combination_of_columns: ['departureDate', 'trainType', 'trainCategory']
     columns:
       - name: departureDate
         tests:
