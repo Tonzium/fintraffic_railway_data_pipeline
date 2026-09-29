@@ -23,6 +23,11 @@ Gold models transform cleaned silver-layer data into:
 
 1. **`gold_on_time_performance`** - Overall OTP metrics across all dimensions
 2. **`gold_ic_vs_hdm_comparison`** - Detailed IC vs HDM competitive analysis
+3. **`gold_station_performance`** - Per-station volume and OTP for the station map
+4. **Evidence page aggregates** - `gold_daily_performance`, `gold_hourly_delay_categories`,
+   `gold_delay_histogram`, `gold_train_spans`, `gold_station_presence`,
+   `gold_ic_hdm_station_daily`, `gold_ic_hdm_hourly_daily`, `gold_timetable_coverage`
+   (see `gold_page_aggregates`)
 
 ---
 
@@ -331,5 +336,93 @@ END
 ### Usage in Models
 
 These categories are calculated in **silver_timetable_events** and aggregated in all gold models to provide consistent delay analysis across the platform.
+
+{% enddocs %}
+
+{% docs gold_page_aggregates %}
+
+## Evidence page aggregates
+
+The Evidence site (`bi/workspace`) used to load `silver_fact_timetable_events` as a source: one
+row per arrival/departure (~64,000 rows per day). `npm run sources` then needed memory that grew
+with history (about 6 GB at 30 days, out of memory at ~55 days), and the browser had to download
+every event. These eight small tables replace it. Every page query is answered exactly from them,
+and at 365 days of history each has at most a few tens of thousands of rows.
+
+| Model | Grain | Filters used by pages |
+|-------|-------|-----------------------|
+| `gold_daily_performance` | actual day x trainType x trainCategory x day_of_week x scheduled_month | date range (Train Performance) |
+| `gold_hourly_delay_categories` | scheduled_hour x trainType x trainCategory x delay_category (all time) | none |
+| `gold_delay_histogram` | trainType x integer delay_minutes (all time) | none |
+| `gold_train_spans` | departureDate x trainType x trainCategory x first/last actual day x has_* flags | period, date range |
+| `gold_station_presence` | trainType x trainCategory x station x run of consecutive actual days | date range |
+| `gold_ic_hdm_station_daily` | departureDate x trainType (IC/HDM) x station | period (IC vs HDM) |
+| `gold_ic_hdm_hourly_daily` | departureDate x trainType (IC/HDM) x scheduled_hour x delay_category | period (IC vs HDM) |
+| `gold_timetable_coverage` | departureDate x trainType x trainCategory, **all** events | none |
+
+All models except `gold_timetable_coverage` cover commercial stops with an actual time
+(`commercial_stop = true AND actual_time IS NOT NULL`), the filter every page query used.
+
+### Additive measures
+
+| Column | Definition |
+|--------|------------|
+| `events` | COUNT(*) |
+| `on_time_events` | stops with `delay_minutes <= 5` (`is_on_time`) |
+| `delay_sum` | SUM(delay_minutes) |
+| `delay_sumsq` | SUM(delay_minutes^2) |
+| `delay_count` | COUNT(delay_minutes) |
+
+Roll-ups that reproduce the event-level SQL:
+
+```sql
+ROUND(100.0 * SUM(on_time_events) / SUM(events), 2)          -- AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END)
+ROUND(SUM(delay_sum) / SUM(delay_count), 2)                   -- AVG(delay_minutes)
+ROUND(SQRT((SUM(delay_count) * SUM(delay_sumsq) - SUM(delay_sum) * SUM(delay_sum))
+      / NULLIF(SUM(delay_count) * (SUM(delay_count) - 1), 0)), 2)  -- STDDEV(delay_minutes)
+```
+
+`delay_minutes` is an integer, so `gold_delay_histogram` holds the full delay distribution of
+each train type: PERCENTILE_CONT/MEDIAN, MIN and MAX are exact (median = mean of the values at
+0-based positions floor((n-1)/2) and ceil((n-1)/2) of the cumulative counts). Its NULL
+`delay_minutes` row keeps the stops without a delay, so every train type is present.
+
+The two all-time tables have no date column and do not grow with the number of days:
+`gold_hourly_delay_categories` is bounded by 24 hours x type/category pairs x 6 categories, and
+`gold_delay_histogram` grows only with the spread of delay values per train type.
+
+### Distinct counts
+
+`COUNT(DISTINCT trainNumber || departureDate)` and `COUNT(DISTINCT stationShortCode)` cannot be
+summed across rows, so they get their own models:
+
+* `gold_train_spans.n_trains` can be summed over departureDate, trainType and trainCategory,
+  because a train has exactly one of each. Per time of day or weekday/weekend, use
+  `SUM(n_trains) FILTER (WHERE has_...)`: a train in both groups counts in both, as before.
+* Date range `actual_time BETWEEN '<start>' AND '<end>'`: a train or station had a stop in the
+  range when `first_actual_bucket <= '<end>' AND last_actual_bucket >= '<start>'`. This overlap
+  test is exact under two conditions:
+  1. `<start>` < `<end>`. Then the range is at least 24 h long and cannot fall inside the gap
+     between two buckets of one train or one station run. When `<start>` = `<end>`, the event-level
+     filter matches only stops stamped exactly 00:00:00, which the overlap test cannot tell
+     apart, so the Train Performance page adds `'<start>' < '<end>'` to its train filter and shows
+     no rows then (the event-level query in practice also showed none, as it needs 50 trains).
+     A range with `<start>` > `<end>` is empty either way.
+  2. For `gold_train_spans`: no train has more than 24 h between the actual days of its commercial
+     stops, i.e. a train stays within two UTC days (warn test on `gold_train_spans`).
+     `gold_station_presence` needs no such condition, because its runs are built to break at
+     every gap of more than 24 h.
+* The page SQL joins these distinct counts to the additive measures with
+  `IS NOT DISTINCT FROM`, so a NULL trainType or trainCategory stays its own row, as it did with
+  `GROUP BY` on the events.
+
+### Actual-day buckets
+
+`actual_bucket` / `first_actual_bucket` / `last_actual_bucket` are the UTC day of `actual_time`
+stamped at 12:00. A stop recorded exactly at 00:00:00 keeps its own timestamp. With the
+`YYYY-MM-DD` strings that Evidence's DateRange input produces,
+`actual_bucket BETWEEN '<start>' AND '<end>'` selects exactly the same stops as
+`actual_time BETWEEN '<start>' AND '<end>'`: stops on days start .. end-1, plus stops at exactly
+00:00:00 on the end day.
 
 {% enddocs %}

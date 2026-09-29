@@ -67,3 +67,241 @@ models:
 
       - name: avg_delay_minutes
         description: "Average delay across all stops at this station"
+
+  # ---------------------------------------------------------------------------
+  # Evidence page aggregates (see doc gold_page_aggregates). They replace the
+  # event-level timetable_events source; every page query is answered exactly
+  # from these tables.
+  #
+  # trainType / trainCategory not_null tests are warnings: Digitraffic always
+  # sets both, and the page SQL joins on them NULL-safely (IS NOT DISTINCT FROM),
+  # so a NULL key must not stop the daily pipeline. The other not_null columns
+  # are guaranteed by the model SQL or already tested in silver.
+  # ---------------------------------------------------------------------------
+
+  - name: gold_daily_performance
+    description: >
+      Commercial-stop measures per actual day x trainType x trainCategory x day_of_week x
+      scheduled_month (is_weekend follows day_of_week). {{ doc("gold_page_aggregates") }}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['actual_bucket', 'trainType', 'trainCategory', 'day_of_week', 'scheduled_month']
+      - dbt_utils.expression_is_true:
+          expression: "on_time_events <= events AND delay_count <= events"
+    columns:
+      - name: actual_bucket
+        description: "UTC day of actual_time stamped at 12:00; stops recorded exactly at 00:00:00 keep that timestamp"
+        tests:
+          - not_null
+      - name: trainType
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: trainCategory
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: day_of_week
+        description: "Day of week of scheduled_time (0 = Sunday)"
+        tests:
+          - not_null
+      - name: is_weekend
+        tests:
+          - not_null
+      - name: events
+        description: "Commercial stops with an actual time"
+        tests:
+          - not_null
+      - name: on_time_events
+        description: "Stops with delay_minutes <= 5"
+      - name: delay_sum
+        description: "SUM(delay_minutes)"
+      - name: delay_sumsq
+        description: "SUM(delay_minutes * delay_minutes), for the sample standard deviation"
+      - name: delay_count
+        description: "Stops with a non-null delay_minutes"
+
+  - name: gold_hourly_delay_categories
+    description: >
+      All-time commercial-stop measures per scheduled_hour x trainType x trainCategory x
+      delay_category (time_of_day_category follows scheduled_hour). {{ doc("gold_page_aggregates") }}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['scheduled_hour', 'trainType', 'trainCategory', 'delay_category']
+      - dbt_utils.expression_is_true:
+          expression: "on_time_events <= events AND delay_count <= events"
+    columns:
+      - name: scheduled_hour
+        tests:
+          - not_null
+      - name: time_of_day_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['morning_rush', 'off_peak', 'evening_rush']
+      - name: trainType
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: trainCategory
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: delay_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['early', 'on_time', 'slightly_late', 'late', 'very_late', 'unknown']
+      - name: events
+        tests:
+          - not_null
+
+  - name: gold_delay_histogram
+    description: >
+      All-time commercial-stop histogram per trainType x integer delay_minutes (NULL row for stops
+      without a delay); gives exact medians, MIN/MAX and standard deviations per train type.
+      {{ doc("gold_page_aggregates") }}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['trainType', 'delay_minutes']
+      - dbt_utils.expression_is_true:
+          expression: "delay_count = CASE WHEN delay_minutes IS NULL THEN 0 ELSE events END"
+    columns:
+      - name: trainType
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: events
+        tests:
+          - not_null
+
+  - name: gold_train_spans
+    description: >
+      Number of trains (trainNumber + departureDate) per departureDate x trainType x trainCategory x
+      first/last actual day x time-of-day and weekday/weekend flags. {{ doc("gold_page_aggregates") }}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['departureDate', 'trainType', 'trainCategory', 'first_actual_bucket', 'last_actual_bucket',
+                                   'has_morning_rush', 'has_off_peak', 'has_evening_rush', 'has_weekday', 'has_weekend']
+      - dbt_utils.expression_is_true:
+          expression: "first_actual_bucket <= last_actual_bucket AND n_trains >= 1"
+      # Range filters on first/last_actual_bucket are exact while no train has more than 24 h
+      # between the actual days of its stops; a train that stays within two UTC days satisfies that.
+      - dbt_utils.expression_is_true:
+          expression: "date_diff('day', first_actual_bucket, last_actual_bucket) <= 1"
+          config:
+            severity: warn
+    columns:
+      - name: departureDate
+        tests:
+          - not_null
+      - name: trainType
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: trainCategory
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: first_actual_bucket
+        tests:
+          - not_null
+      - name: last_actual_bucket
+        tests:
+          - not_null
+      - name: n_trains
+        tests:
+          - not_null
+
+  - name: gold_station_presence
+    description: >
+      Runs of consecutive actual days on which a trainType/trainCategory had commercial stops at a
+      station; exact "stations served" for any date range. {{ doc("gold_page_aggregates") }}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['trainType', 'trainCategory', 'stationShortCode', 'first_actual_bucket']
+      - dbt_utils.expression_is_true:
+          expression: "first_actual_bucket <= last_actual_bucket"
+    columns:
+      - name: trainType
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: trainCategory
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: stationShortCode
+        tests:
+          - not_null
+      - name: first_actual_bucket
+        tests:
+          - not_null
+
+  - name: gold_ic_hdm_station_daily
+    description: >
+      IC and HDM commercial-stop measures per departureDate x trainType x stationShortCode.
+      {{ doc("gold_page_aggregates") }}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['departureDate', 'trainType', 'stationShortCode']
+    columns:
+      - name: departureDate
+        tests:
+          - not_null
+      - name: trainType
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['IC', 'HDM']
+      - name: stationShortCode
+        tests:
+          - not_null
+
+  - name: gold_ic_hdm_hourly_daily
+    description: >
+      IC and HDM commercial-stop measures per departureDate x trainType x scheduled_hour x
+      delay_category. {{ doc("gold_page_aggregates") }}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['departureDate', 'trainType', 'scheduled_hour', 'delay_category']
+    columns:
+      - name: departureDate
+        tests:
+          - not_null
+      - name: trainType
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['IC', 'HDM']
+      - name: delay_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['early', 'on_time', 'slightly_late', 'late', 'very_late', 'unknown']
+
+  - name: gold_timetable_coverage
+    description: >
+      Row count and min/max actual_time per departureDate x trainType x trainCategory over ALL
+      timetable events (coverage, freshness, category list, date-picker bounds).
+      {{ doc("gold_page_aggregates") }}
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['departureDate', 'trainType', 'trainCategory']
+    columns:
+      - name: departureDate
+        tests:
+          - not_null
+      - name: events
+        description: "All timetable rows, not only commercial stops"
+        tests:
+          - not_null
