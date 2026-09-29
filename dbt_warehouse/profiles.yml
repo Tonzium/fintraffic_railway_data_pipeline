@@ -6,7 +6,11 @@ dbt_warehouse:
       path: '../data/warehouse/warehouse.duckdb'
       schema: dev
       settings:
-        # Cap DuckDB's memory so a full refresh over a year of files spills to disk
-        # instead of being OOM-killed. Override with DUCKDB_MEMORY_LIMIT.
+        # Cap DuckDB's memory and threads so big loads spill to disk instead of being
+        # OOM-killed. A full refresh over a year of files peaks at about 4 GB with these
+        # values; DuckDB would otherwise use one thread per CPU, and at 24+ threads the
+        # per-thread buffers alone exceed the limit. Override with DUCKDB_MEMORY_LIMIT
+        # and DUCKDB_THREADS.
         memory_limit: "{{ env_var('DUCKDB_MEMORY_LIMIT', '4GB') }}"
+        threads: "{{ env_var('DUCKDB_THREADS', '2') }}"
         preserve_insertion_order: false

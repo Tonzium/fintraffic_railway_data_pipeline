@@ -22,14 +22,27 @@
     post_hook="DELETE FROM {{ this }} WHERE departureDate < current_date - " ~ (var('retention_days', 365) | int)
 ) }}
 
-{#- Incremental runs: list the daily files inside the reload window. glob() only lists
-    names, so this costs nothing even with a year of files on disk. -#}
+{#- Column types are pinned. Letting DuckDB detect them across files (union_by_name)
+    keeps a reader per file: a full refresh over a year of files then needs ~10 GB and
+    fails under the 4 GB memory_limit; pinned, it stays inside the limit. The STRUCT
+    holds every field Digitraffic sends today. Keys that are not listed are ignored and
+    a missing key reads as NULL, so new API fields cannot break a load. -#}
+{% set timetable_rows_type -%}
+STRUCT("type" VARCHAR, commercialTrack VARCHAR, cancelled BOOLEAN, scheduledTime VARCHAR, actualTime VARCHAR, differenceInMinutes BIGINT, commercialStop BOOLEAN, causes STRUCT(categoryCode VARCHAR, categoryCodeId BIGINT, detailedCategoryCode VARCHAR, detailedCategoryCodeId BIGINT, thirdCategoryCode VARCHAR, thirdCategoryCodeId BIGINT)[], stationShortCode VARCHAR, stationUICCode BIGINT, countryCode VARCHAR, trainReady STRUCT(accepted BOOLEAN, "source" VARCHAR, "timestamp" VARCHAR), trainStopping BOOLEAN, liveEstimateTime VARCHAR, estimateSource VARCHAR, stopSector VARCHAR, unknownDelay BOOLEAN, unknownTrack BOOLEAN)[]
+{%- endset %}
+
+{#- List the daily files to read: all of them for a full refresh, only the reload window
+    for an incremental run. glob() only lists names, so this costs nothing even with a
+    year of files on disk. Only finished files count, never an in-progress *.tmp. -#}
 {% set files = [] %}
-{% if execute and is_incremental() %}
+{% if execute %}
     {% set files_query %}
         SELECT file
         FROM glob('{{ daily_glob }}')
-        WHERE TRY_CAST(regexp_extract(file, '(\d{4}-\d{2}-\d{2})\.json', 1) AS DATE) >= current_date - {{ reload_days }}
+        WHERE regexp_matches(file, '\d{4}-\d{2}-\d{2}\.json(\.gz)?$')
+        {% if is_incremental() -%}
+          AND TRY_CAST(regexp_extract(file, '(\d{4}-\d{2}-\d{2})\.json', 1) AS DATE) >= current_date - {{ reload_days }}
+        {%- endif %}
         ORDER BY file
     {% endset %}
     {% set files = run_query(files_query).columns[0].values() | list %}
@@ -59,17 +72,31 @@ WITH trains_raw AS (
         version::BIGINT as version,
         timetableType::VARCHAR as timetableType,
         timetableAcceptanceDate::TIMESTAMP as timetableAcceptanceDate,
-        timeTableRows,  -- Let DuckDB auto-infer as STRUCT[]
+        timeTableRows,
         filename
     FROM read_json(
-        {% if is_incremental() -%}
+        {% if files | length > 0 -%}
         [{% for f in files %}'{{ f }}'{% if not loop.last %}, {% endif %}{% endfor %}],
         {%- else -%}
-        '{{ daily_glob }}',
+        '{{ daily_glob }}',  -- no daily files at all: fails loudly on a first run without data
         {%- endif %}
         format='array',
         filename=true,
-        union_by_name=true,
+        columns={
+            'trainNumber': 'INTEGER',
+            'departureDate': 'DATE',
+            'operatorUICCode': 'INTEGER',
+            'operatorShortCode': 'VARCHAR',
+            'trainType': 'VARCHAR',
+            'trainCategory': 'VARCHAR',
+            'commuterLineID': 'VARCHAR',
+            'runningCurrently': 'BOOLEAN',
+            'cancelled': 'BOOLEAN',
+            'version': 'BIGINT',
+            'timetableType': 'VARCHAR',
+            'timetableAcceptanceDate': 'TIMESTAMP',
+            'timeTableRows': '{{ timetable_rows_type }}'
+        },
         ignore_errors=false,
         maximum_object_size=52428800  -- 50MB per object
     )
@@ -109,7 +136,7 @@ surrogate_key_added AS (
 
         -- Lineage metadata (path normalised to '/' so it looks the same on Windows)
         CURRENT_TIMESTAMP AS _loaded_at,
-        regexp_extract(replace(filename, chr(92), '/'), 'train_departure_date/.*\.json') AS _source_file,
+        regexp_extract(replace(filename, chr(92), '/'), 'train_departure_date/.*\.json(\.gz)?') AS _source_file,
         '{{ invocation_id }}' AS _dbt_run_id
 
     FROM trains_raw

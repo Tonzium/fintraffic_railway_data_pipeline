@@ -32,6 +32,11 @@ vars:
   # History kept in bronze; older days are deleted (demo passes RETENTION_DAYS).
   retention_days: 365
 
+# dbt-duckdb 1.10 leaves bronze_train_departures__dbt_backup behind after a
+# --full-refresh (its drop is rolled back); remove it at the end of every run.
+on-run-end:
+  - "DROP TABLE IF EXISTS {{ target.schema }}_bronze.bronze_train_departures__dbt_backup"
+
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
 models:
