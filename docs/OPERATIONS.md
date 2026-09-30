@@ -12,6 +12,7 @@ in [demo/README.md](../demo/README.md).
 | Code | [github.com/Tonzium/fintraffic_railway_data_pipeline](https://github.com/Tonzium/fintraffic_railway_data_pipeline), branch `main`. It started as a school project on gitlab.dclabra.fi (`data-alustat-2025/tonikiuru`) |
 | Deployment files | `docker-compose.demo.yml`, `demo/`, `.env` (not in git) |
 | Server | VM 107 `railway` (hostname `railway-vm`) on Proxmox pve1, 192.168.68.2. Ubuntu 24.04 LTS, 2 vCPU, 12 GB RAM, 32 GB disk |
+| Code on the server | `/home/tonzium/tonikiuru`: a git checkout of `main`, owned by the user `tonzium`. Run git there as `tonzium` (as root, git stops with "detected dubious ownership"); `demo/deploy.sh` does that for you |
 | Public site | railway.tonikiuru.com through a Cloudflare Tunnel to `web:80` |
 | On the home network | `http://<VM IP>:3000` |
 | Containers | `railway-pipeline`, `railway-web`, `railway-cloudflared` |
@@ -162,17 +163,28 @@ Then refresh the site (above) to publish the result.
 
 ### Deploy a code change from GitHub
 
-Check first that the VM's clone points at GitHub (an old clone may still point at the school GitLab):
+Push the change to `main` on GitHub, then on the VM run the deploy script as root. It runs git as the
+checkout's owner, refuses to deploy over local changes, waits while a pipeline run is going, pulls,
+rebuilds only what changed (and recreates `railway-web` if `demo/nginx.conf` changed), prunes old
+images, and follows the first pipeline run until the scheduler reports the result:
 
 ```bash
-git remote -v
+sudo /home/tonzium/tonikiuru/demo/deploy.sh
 ```
 
-Then pull and rebuild. The code is copied into the image, so a change needs `--build`, and the rebuilt
-container runs the pipeline straight away:
+`--check` only lists the incoming commits and changed files; `--no-follow` skips waiting for the run.
+It prints the previous commit and the command to go back if something goes wrong.
+
+The same steps by hand, if the script is not available. Check that the checkout points at GitHub,
+then pull as the owner and rebuild. The code is copied into the image, so a change needs `--build`,
+and the rebuilt container runs the pipeline straight away:
 
 ```bash
-git pull
+runuser -u tonzium -- git -C /home/tonzium/tonikiuru remote -v
+```
+
+```bash
+runuser -u tonzium -- git -C /home/tonzium/tonikiuru pull --ff-only
 ```
 
 ```bash
@@ -434,6 +446,8 @@ Then `scp root@<VM IP>:/root/railway_data-*.tgz .` from the PC, and delete the f
 
 This version stores raw files gzipped, reloads the fetch window, keeps one year and builds the site from
 small aggregate tables. On the VM, in the compose folder:
+
+Run the git commands as `tonzium` (`su - tonzium`, then `cd ~/tonikiuru`); the rest as root.
 
 1. `git remote -v` must show github.com/Tonzium/fintraffic_railway_data_pipeline. If it shows the school
    GitLab: `git remote set-url origin https://github.com/Tonzium/fintraffic_railway_data_pipeline.git`.

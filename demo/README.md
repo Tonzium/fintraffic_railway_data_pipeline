@@ -69,7 +69,11 @@ docker exec railway-pipeline bash /app/demo/run_pipeline.sh
 # One-off catch-up after missed days, logged to docker logs (does not change the daily setting)
 docker exec -d -e BACKFILL_DAYS=35 railway-pipeline bash -c 'bash /app/demo/run_pipeline.sh > /proc/1/fd/1 2>&1'
 
-# Rebuild after changing dashboards/models
+# Deploy the latest main from GitHub: pull (as the checkout's owner), rebuild what changed,
+# prune old images and follow the first run. --check only shows what would change.
+sudo demo/deploy.sh
+
+# Rebuild after changing dashboards/models by hand
 docker compose -f docker-compose.demo.yml up -d --build pipeline
 
 # Reload every day from the raw files into the warehouse (e.g. after upgrading), then force a refresh.

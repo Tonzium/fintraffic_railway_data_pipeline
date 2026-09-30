@@ -1,0 +1,2 @@
+# Shell scripts run on Linux (the server and the Docker image): always check them out with LF.
+*.sh text eol=lf

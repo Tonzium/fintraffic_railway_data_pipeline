@@ -15,3 +15,5 @@ docker compose -f docker-compose.demo.yml up -d --build
 ```
 
 Then in Cloudflare Zero Trust, add the public hostname railway.tonikiuru.com → `HTTP://web:80`.
+
+Later updates: push to `main`, then run `sudo demo/deploy.sh` on the server.
