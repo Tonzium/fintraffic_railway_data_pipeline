@@ -17,11 +17,9 @@ WHERE metric_scope = 'Overall'
 
 ```sql rush_stats
 SELECT
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as morning_rush_otp
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
-    AND time_of_day_category = 'morning_rush'
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as morning_rush_otp
+FROM warehouse.hourly_delay_categories
+WHERE time_of_day_category = 'morning_rush'
 ```
 
 ```sql category_extremes
@@ -38,18 +36,16 @@ SELECT
     COUNT(DISTINCT departureDate) as days_covered,
     MIN(CAST(departureDate AS DATE)) as oldest_day,
     MAX(CAST(departureDate AS DATE)) as newest_day
-FROM warehouse.timetable_events
+FROM warehouse.timetable_coverage
 ```
 
 ```sql worst_hour
 SELECT
     scheduled_hour,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage
+FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
-ORDER BY otp_percentage ASC
+ORDER BY otp_percentage ASC, scheduled_hour
 LIMIT 1
 ```
 
@@ -161,11 +157,9 @@ ORDER BY on_time_percentage DESC
 ```sql hourly_performance
 SELECT
     scheduled_hour,
-    ROUND(AVG(CASE WHEN is_on_time THEN 100.0 ELSE 0 END), 2) as otp_percentage,
-    COUNT(*) as events
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
-    AND commercial_stop = true
+    ROUND(100.0 * SUM(on_time_events) / SUM(events), 2) as otp_percentage,
+    CAST(SUM(events) AS BIGINT) as events
+FROM warehouse.hourly_delay_categories
 GROUP BY scheduled_hour
 ORDER BY scheduled_hour
 ```
@@ -192,9 +186,8 @@ ORDER BY scheduled_hour
 
 ```sql freshness
 SELECT
-    strftime(MAX(actual_time), '%Y-%m-%d %H:%M') as latest_timestamp
-FROM warehouse.timetable_events
-WHERE actual_time IS NOT NULL
+    strftime(MAX(max_actual_time), '%Y-%m-%d %H:%M') as latest_timestamp
+FROM warehouse.timetable_coverage
 ```
 
 ## Quick Links

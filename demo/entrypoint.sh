@@ -1,13 +1,24 @@
 #!/bin/bash
 # Runs the pipeline once at startup, then every day at UPDATE_HOUR (default 07:00, TZ from env).
+# Each run is capped at RUN_TIMEOUT (default 3h): a hung run is stopped (SIGTERM to
+# its process group) instead of blocking every later run.
 set -uo pipefail
 
 run() {
-    if bash /app/demo/run_pipeline.sh; then
-        echo "[scheduler] Pipeline succeeded."
-    else
-        echo "[scheduler] Pipeline FAILED (exit $?). Keeping previous site; retrying at next schedule." >&2
-    fi
+    timeout --kill-after=2m "${RUN_TIMEOUT:-3h}" bash /app/demo/run_pipeline.sh
+    local rc=$?
+    case $rc in
+        0)
+            echo "[scheduler] Pipeline succeeded." ;;
+        75)
+            echo "[scheduler] Pipeline skipped: another run holds the lock." >&2 ;;
+        124)
+            echo "[scheduler] Pipeline TIMED OUT after ${RUN_TIMEOUT:-3h}. Keeping previous site; retrying at next schedule." >&2 ;;
+        137)
+            echo "[scheduler] Pipeline KILLED (SIGKILL: out of memory, or still running after the timeout). Keeping previous site; retrying at next schedule." >&2 ;;
+        *)
+            echo "[scheduler] Pipeline FAILED (exit $rc). Keeping previous site; retrying at next schedule." >&2 ;;
+    esac
 }
 
 echo "[scheduler] Initial run..."

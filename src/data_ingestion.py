@@ -26,9 +26,12 @@ Usage examples:
     python data_ingestion.py --start 2024-01-01 --end 2024-01-31 --skip-existing
 """
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import json
+import os
 import time
 from pathlib import Path
 import logging
@@ -36,6 +39,14 @@ import argparse
 import gzip
 
 from config import BASE_URL, DATA_DIR, RAW_DATA_DIR
+
+# (connect, read) timeouts in seconds. Without them a stalled connection hangs the
+# whole pipeline run forever, and the scheduler never starts the next one.
+STATIONS_TIMEOUT = (10, 60)
+TRAINS_TIMEOUT = (10, 120)
+
+# Digitraffic asks API clients to identify themselves with this header.
+DIGITRAFFIC_USER = "railway.tonikiuru.com"
 
 # Setup logging
 logging.basicConfig(
@@ -56,6 +67,15 @@ class RailwayDataIngestion:
     ):
         self.base_url = BASE_URL
         self.session = requests.Session()
+        self.session.headers["Digitraffic-User"] = DIGITRAFFIC_USER
+        # Retry transient failures (connection resets, 429, 5xx) with backoff 2 s, 4 s, 8 s.
+        retries = Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset(["GET"]),
+        )
+        self.session.mount("https://", HTTPAdapter(max_retries=retries))
         self.station_cache = None
         self.base_dir = Path(base_dir)
         self.compress = compress
@@ -75,15 +95,28 @@ class RailwayDataIngestion:
         self.departures_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Directory structure created at {self.base_dir}")
 
-    def _save_json(self, data: any, filepath: Path):
-        """Save data as JSON (optionally compressed)"""
-        if self.compress:
+    def _save_json(self, data: any, filepath: Path, compress: Optional[bool] = None) -> Path:
+        """
+        Save data as compact JSON, gzipped when compress is on (default: self.compress).
+
+        The file is written to a temporary name and renamed into place, so a crash,
+        a full disk or a container stop never leaves a half-written file behind.
+        Returns the final path.
+        """
+        if compress is None:
+            compress = self.compress
+        if compress:
             filepath = filepath.with_suffix(filepath.suffix + '.gz')
-            with gzip.open(filepath, 'wt', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        else:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+        tmp_path = filepath.with_name(filepath.name + '.tmp')
+        opener = gzip.open if compress else open
+        try:
+            with opener(tmp_path, 'wt', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+            os.replace(tmp_path, filepath)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        return filepath
 
     def _load_json(self, filepath: Path) -> any:
         """Load JSON data (handles compressed files)"""
@@ -107,13 +140,13 @@ class RailwayDataIngestion:
             return self._load_json(output_file)
 
         url = f"{self.base_url}/metadata/stations"
-        response = self.session.get(url)
+        response = self.session.get(url, timeout=STATIONS_TIMEOUT)
         response.raise_for_status()
 
         stations_data = response.json()
 
-        # Save full station data
-        self._save_json(stations_data, output_file)
+        # Save full station data (always plain JSON: small, and read by bronze_stations)
+        self._save_json(stations_data, output_file, compress=False)
         logger.info(f"Saved {len(stations_data)} stations to {output_file}")
 
         # Create lookup dictionary
@@ -146,7 +179,7 @@ class RailwayDataIngestion:
             url = f"{self.base_url}/trains/{date}"
 
         try:
-            response = self.session.get(url, timeout=30)
+            response = self.session.get(url, timeout=TRAINS_TIMEOUT)
             response.raise_for_status()
             trains = response.json()
             logger.info(f"Fetched {len(trains)} trains for {date}" +
@@ -163,9 +196,9 @@ class RailwayDataIngestion:
         station_code: Optional[str] = None
     ):
         """
-        Save trains organized by departure date: year/month/day.json
+        Save trains organized by departure date: year/month/day.json[.gz]
 
-        Structure: data/staging/train_departure_date/YYYY/MM/YYYY-MM-DD.json
+        Structure: data/staging/train_departure_date/YYYY/MM/YYYY-MM-DD.json[.gz]
         """
         date_obj = datetime.strptime(date, '%Y-%m-%d')
         year = date_obj.strftime('%Y')
@@ -181,8 +214,13 @@ class RailwayDataIngestion:
         if station_code:
             filename = f"{date}_{station_code}.json"
 
-        output_file = month_dir / filename
-        self._save_json(trains, output_file)
+        output_file = self._save_json(trains, month_dir / filename)
+
+        # Keep one file per day: drop the copy in the other format (e.g. an old
+        # plain .json after switching to --compress), or bronze would load both.
+        other = (month_dir / filename) if output_file.suffix == '.gz' else output_file.with_name(output_file.name + '.gz')
+        if other.exists():
+            other.unlink()
         logger.info(f"Saved {len(trains)} trains to {output_file}")
 
     def save_individual_trains(self, trains: List[Dict], date: str):
@@ -249,7 +287,8 @@ class RailwayDataIngestion:
             # Check if already exists
             month_dir = self.departures_dir / year / month
             daily_file = month_dir / f"{date_str}.json"
-            if self.skip_existing and daily_file.exists():
+            gz_file = month_dir / f"{date_str}.json.gz"
+            if self.skip_existing and (daily_file.exists() or gz_file.exists()):
                 logger.info(f"Skipping {date_str} (already exists)")
                 current_date += timedelta(days=1)
                 processed_days += 1

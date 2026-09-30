@@ -1,12 +1,12 @@
 # Fintraffic Railway data platform
 
-**🚆 Live demo: [railway.tonikiuru.com](https://railway.tonikiuru.com)** — refreshed daily at 07:00 EET, built from this repo.
+**🚆 Live demo: [railway.tonikiuru.com](https://railway.tonikiuru.com)** — refreshed daily at 07:00 Helsinki time, built from this repo.
 
 This repository contains a data platform setup for analyzing Finnish Railway data. It uses **uv** for Python management, **dbt** for data transformation, and **Evidence** for BI dashboards.
 
 Business goal was to analyze On-Time Performance (OTP) and delays of VR trains in Finland. The analysis investigates time-based patterns, train type comparisons, and station-level metrics to identify performance trends.
 
-**Dataset:** 3 months of data (September 2025 - December 2025) from Fintraffic Digitraffic API.
+**Dataset:** the live demo keeps a rolling year of data from the Fintraffic Digitraffic API, collected since 5 August 2026. (The original school project used September–December 2025.)
 
 ## Dashboard Previews
 
@@ -56,8 +56,10 @@ Download railway data (Digitraffic API) into the staging area.
 
 *   **Manual Command:**
     ```bash
-    uv run python src/data_ingestion.py --start 2024-11-01 --end 2024-12-01
+    uv run python src/data_ingestion.py --start 2026-09-01 --end 2026-09-30 --compress
     ```
+
+    `--compress` stores each day as gzipped JSON (about 0.7 MB instead of about 25 MB).
 
 ---
 
@@ -79,6 +81,12 @@ Process raw data into structured tables (Bronze -> Silver -> Gold).
     ```bash
     uv run dbt build
     ```
+
+    The first build reads every daily file. After that, each build reloads only the last
+    `reload_days` days (default 7) and deletes days older than `retention_days` (default 365),
+    both set in `dbt_project.yml`. After fetching an older or longer range, load it with
+    `uv run dbt build --full-refresh`, or pass e.g. `--vars '{reload_days: 30}'`; dates more than
+    `retention_days` in the past are always dropped.
 
 ### Useful dbt Commands
 *   **Generate & View Documentation:**
@@ -167,7 +175,8 @@ cp .env.example .env   # add your Cloudflare Tunnel token
 docker compose -f docker-compose.demo.yml up -d --build
 ```
 
-See [`demo/README.md`](demo/README.md) for the full deployment guide (Proxmox + Cloudflare Tunnel).
+See [`demo/README.md`](demo/README.md) for the full deployment guide (Proxmox + Cloudflare Tunnel) and
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md) for day-to-day operations and troubleshooting.
 
 ---
 

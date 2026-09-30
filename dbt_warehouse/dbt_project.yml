@@ -26,6 +26,16 @@ clean-targets:         # directories to be removed by `dbt clean`
 # Variables
 vars:
   staging_path: '../data/staging'
+  # Days re-read and replaced by each incremental run of bronze_train_departures.
+  # demo/run_pipeline.sh passes BACKFILL_DAYS here so it matches the ingestion window.
+  reload_days: 7
+  # History kept in bronze; older days are deleted (demo passes RETENTION_DAYS).
+  retention_days: 365
+
+# dbt-duckdb 1.10 leaves bronze_train_departures__dbt_backup behind after a
+# --full-refresh (its drop is rolled back); remove it at the end of every run.
+on-run-end:
+  - "DROP TABLE IF EXISTS {{ target.schema }}_bronze.bronze_train_departures__dbt_backup"
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
@@ -38,8 +48,8 @@ models:
       bronze_stations:
         +materialized: table
       bronze_train_departures:
+        # incremental strategy, unique key and retention live in the model file
         +materialized: incremental
-        +unique_key: ['trainNumber', 'departureDate']
         +on_schema_change: 'append_new_columns'
 
     # Silver layer configuration
